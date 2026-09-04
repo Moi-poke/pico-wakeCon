@@ -48,11 +48,16 @@ extern uint8_t probe_pc_lx, probe_pc_ly, probe_pc_rx, probe_pc_ry;
 /* 8 バイト報告の記述子。
  * 内訳: ボタン16bit + hat(4bit) + 埋め(4bit) + 軸4B + 予備1B = 64bit。
  * hat は Null 付きなので 8（中立）は無値として扱われる。
+ * Application Collection で包むこと。End だけでは不正な記述子になり、
+ * ホストがゲームパッドとして認識しない。
  * const を付けない。USB の DMA が直接読むため SRAM に置く。
  * フラッシュに置くと、BOOTSEL 読み（CS 操作）の最中に DMA が読んで
  * バスフォルトになる。 */
 static uint8_t wire_report_desc[] = {
-    0x05, 0x09,        // Usage Page (Button)
+    0x05, 0x01,        // Usage Page (Generic Desktop)
+    0x09, 0x05,        // Usage (Game Pad)
+    0xA1, 0x01,        // Collection (Application)
+    0x05, 0x09,        //   Usage Page (Button)
     0x19, 0x01,        // Usage Minimum (1)
     0x29, 0x10,        // Usage Maximum (16)
     0x15, 0x00,        // Logical Minimum (0)
