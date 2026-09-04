@@ -312,6 +312,10 @@ void wire_send_if_changed(void)
 
 void wire_task(void)
 {
+    /* 初期化前は触らない。未初期化のまま tud_task へ入ると落ちる。 */
+    if (!tud_inited()) {
+        return;
+    }
     tud_task();
     wire_send_if_changed();
 }
@@ -323,6 +327,9 @@ void wire_task(void)
 
 static bool cdc_usable(void)
 {
+    if (!tud_inited()) {
+        return false;
+    }
     return !mode_is_wired() && tud_mounted();
 }
 
@@ -383,4 +390,16 @@ static stdio_driver_t cdc_stdio_driver = {
 void wire_stdio_init(void)
 {
     stdio_set_driver_enabled(&cdc_stdio_driver, true);
+}
+
+/* TinyUSB デバイスを開始する。stdio_usb を使わないため自前で呼ぶ。
+ * 呼ばないと列挙も tud_task も動かず、USB が無反応になる。
+ * ui.h は btstack.h を引いて TinyUSB と衝突するため、結果だけ返して
+ * 表示は呼び出し側に任せる。 */
+bool wire_usb_init(void)
+{
+    if (tud_inited()) {
+        return true;
+    }
+    return tud_init(0);
 }

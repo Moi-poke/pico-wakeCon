@@ -275,6 +275,9 @@ int main(void)
     mode_boot();
     /* USB CDC の読み書きは自前ドライバ（wire.c）が行う。 */
     wire_stdio_init();
+    if (!wire_usb_init()) {
+        probe_line("NG: tud_init");
+    }
 
     if (!mode_is_wired()) {
         gap_discoverable_control(1);

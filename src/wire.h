@@ -20,6 +20,9 @@ void wire_send_if_changed(void);
 /* USB CDC の簡易ドライバを stdio へ登録する。無線モードの PC 接続用。 */
 void wire_stdio_init(void);
 
+/* TinyUSB デバイスを開始する。成功したら true。 */
+bool wire_usb_init(void);
+
 #ifdef __cplusplus
 }
 #endif
