@@ -11,9 +11,11 @@
 #include "cap.h"
 #include "hid.h"
 #include "link.h"
+#include "mode.h"
 #include "spi.h"
 #include "store.h"
 #include "ui.h"
+#include "wire.h"
 #include "switch_hid.h"
 
 #define UART_ID     uart0
@@ -36,12 +38,19 @@ static btstack_timer_source_t reconnect_timer;
 static void uart_poll_handler(btstack_timer_source_t *ts)
 {
     probe_uart_task();
+    /* TinyUSB の駆動。有線では報告送信、無線では CDC の面倒を見る。 */
+    wire_task();
+    mode_poll(to_ms_since_boot(get_absolute_time()));
     btstack_run_loop_set_timer(ts, UART_POLL_MS);
     btstack_run_loop_add_timer(ts);
 }
 
 static void empty_timer_handler(btstack_timer_source_t *ts)
 {
+    /* Classic HID の送出要求。有線では BT へ送らない。 */
+    if (mode_is_wired()) {
+        return;
+    }
     if (probe_hid_cid != 0u) {
         hid_device_request_can_send_now_event(probe_hid_cid);
     }
@@ -119,14 +128,17 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
                      link_key_count());
             probe_line(msg);
             store_color_load();
-            if (store_host_load()) {
+            /* Classic の自動再接続は無線だけ。有線では USB を見に行く。 */
+            if (!mode_is_wired() && store_host_load()) {
                 snprintf(msg, sizeof(msg), "reconnect to %s",
                          bd_addr_to_str(probe_host_addr));
                 probe_line(msg);
                 btstack_run_loop_set_timer(&reconnect_timer, 2000);
                 btstack_run_loop_add_timer(&reconnect_timer);
-            } else {
+            } else if (!mode_is_wired()) {
                 probe_line("no host. open Change-Grip screen on Switch");
+            } else {
+                probe_line("wired mode. connect USB to Switch");
             }
             if (store_cap_load()) {
                 probe_line("cap saved. B to wake");
@@ -260,40 +272,51 @@ int main(void)
         }
     }
     link_init();
+    mode_boot();
+    /* USB CDC の読み書きは自前ドライバ（wire.c）が行う。 */
+    wire_stdio_init();
 
-    gap_discoverable_control(1);
-    gap_connectable_control(1);
-    gap_set_class_of_device(SWITCH_CLASS_OF_DEVICE);
-    gap_set_local_name(SWITCH_GAP_NAME);
-    gap_set_default_link_policy_settings(LM_LINK_POLICY_ENABLE_ROLE_SWITCH |
-                                         LM_LINK_POLICY_ENABLE_SNIFF_MODE);
-    gap_set_allow_role_switch(true);
-    gap_ssp_set_io_capability(SSP_IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
-    gap_ssp_set_auto_accept(true);
+    if (!mode_is_wired()) {
+        gap_discoverable_control(1);
+        gap_connectable_control(1);
+        gap_set_class_of_device(SWITCH_CLASS_OF_DEVICE);
+        gap_set_local_name(SWITCH_GAP_NAME);
+        gap_set_default_link_policy_settings(LM_LINK_POLICY_ENABLE_ROLE_SWITCH |
+                                             LM_LINK_POLICY_ENABLE_SNIFF_MODE);
+        gap_set_allow_role_switch(true);
+        gap_ssp_set_io_capability(SSP_IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
+        gap_ssp_set_auto_accept(true);
+    } else {
+        /* 有線では Classic に名乗らない。BLE（取込・再生）は使う。 */
+        gap_discoverable_control(0);
+        gap_connectable_control(0);
+    }
 
     l2cap_init();
     sdp_init();
 
-    memset(hid_service_buffer, 0, sizeof(hid_service_buffer));
-    hid_create_sdp_record(hid_service_buffer,
-                          sdp_create_service_record_handle(), &hid_params);
-    btstack_assert(de_get_len(hid_service_buffer) <= sizeof(hid_service_buffer));
-    sdp_register_service(hid_service_buffer);
+    if (!mode_is_wired()) {
+        memset(hid_service_buffer, 0, sizeof(hid_service_buffer));
+        hid_create_sdp_record(hid_service_buffer,
+                              sdp_create_service_record_handle(), &hid_params);
+        btstack_assert(de_get_len(hid_service_buffer) <= sizeof(hid_service_buffer));
+        sdp_register_service(hid_service_buffer);
 
-    memset(pnp_service_buffer, 0, sizeof(pnp_service_buffer));
-    device_id_create_sdp_record(pnp_service_buffer,
-                                sdp_create_service_record_handle(),
-                                DEVICE_ID_VENDOR_ID_SOURCE_USB,
-                                SWITCH_VENDOR_ID, SWITCH_PRODUCT_ID,
-                                SWITCH_PRODUCT_VERSION);
-    btstack_assert(de_get_len(pnp_service_buffer) <= sizeof(pnp_service_buffer));
-    sdp_register_service(pnp_service_buffer);
+        memset(pnp_service_buffer, 0, sizeof(pnp_service_buffer));
+        device_id_create_sdp_record(pnp_service_buffer,
+                                    sdp_create_service_record_handle(),
+                                    DEVICE_ID_VENDOR_ID_SOURCE_USB,
+                                    SWITCH_VENDOR_ID, SWITCH_PRODUCT_ID,
+                                    SWITCH_PRODUCT_VERSION);
+        btstack_assert(de_get_len(pnp_service_buffer) <= sizeof(pnp_service_buffer));
+        sdp_register_service(pnp_service_buffer);
 
-    hid_device_init(1, sizeof(switch_bt_report_descriptor),
-                    switch_bt_report_descriptor);
-    hid_device_accept_truncated_hid_reports(true);
-    hid_device_register_report_data_callback(&probe_report_handler);
-    hid_device_register_packet_handler(&packet_handler);
+        hid_device_init(1, sizeof(switch_bt_report_descriptor),
+                        switch_bt_report_descriptor);
+        hid_device_accept_truncated_hid_reports(true);
+        hid_device_register_report_data_callback(&probe_report_handler);
+        hid_device_register_packet_handler(&packet_handler);
+    }
 
     hci_events.callback = &packet_handler;
     hci_add_event_handler(&hci_events);
@@ -318,7 +341,9 @@ int main(void)
     btstack_run_loop_set_timer_handler(&reconnect_timer,
                                        &link_reconnect_handler);
 
-    probe_line("ready. C capture / B wake / S input / ? status");
+    probe_line(mode_is_wired()
+                   ? "ready. wired USB HID / C capture / B wake / S input"
+                   : "ready. C capture / B wake / S input / ? status");
     btstack_run_loop_execute();
 
     while (1) {

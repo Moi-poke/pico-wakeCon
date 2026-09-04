@@ -35,14 +35,25 @@ add_executable(pico-wakecon
     src/store.c
     src/link.c
     src/ui.c
+    src/mode.c
+    src/wire.c
 )
+
+# 有線モードの USB HID を使うため TinyUSB の HID を有効にする。
+# USB の記述子・CDC 読み書きは自前（wire.c）で行う。SDK の stdio_usb は
+# 使わない（記述子が衝突するため）。設定は src/tusb_config.h に置き、
+# SDK の設定（CDC のみ）を上書きする（-I src が先頭のため）。
+# tinyusb_device のリンクは TinyUSB の include のために要る。
 
 pico_set_program_name(pico-wakecon "pico-wakecon")
 pico_set_program_version(pico-wakecon "0.1")
 
 # stdio goes to USB CDC. UART0 (GP0/GP1) is driven directly for logs/commands.
+# USB の記述子は自前（wire.c）でモード別に出すため、SDK の CDC 記述子と
+# 被らないよう stdio_usb は切る。USB CDC の読み書きは wire.c の簡易
+# ドライバが行う。UART は直接叩くため stdio ドライバは要らない。
 pico_enable_stdio_uart(pico-wakecon 0)
-pico_enable_stdio_usb(pico-wakecon 1)
+pico_enable_stdio_usb(pico-wakecon 0)
 
 target_include_directories(pico-wakecon PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src
@@ -51,12 +62,14 @@ target_include_directories(pico-wakecon PRIVATE
 target_link_libraries(pico-wakecon
     pico_stdlib
     hardware_uart
+    hardware_watchdog
     pico_btstack_classic
     pico_btstack_ble
     pico_btstack_cyw43
     pico_cyw43_arch_none
     pico_unique_id
     pico_btstack_flash_bank
+    tinyusb_device
 )
 
 pico_add_extra_outputs(pico-wakecon)

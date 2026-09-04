@@ -9,6 +9,7 @@
 #define TAG_HOST 0x4E58484Fu  /* 'NXHO' */
 #define TAG_COLOR 0x4E58434Cu /* 'NXCL' */
 #define TAG_CAP 0x57435031u   /* 'WCP1' */
+#define TAG_MODE 0x4E584D44u  /* 'NXMD' */
 
 void store_host(bd_addr_t addr)
 {
@@ -115,4 +116,31 @@ void store_cap_forget(void)
         return;
     }
     tlv->delete_tag(ctx, TAG_CAP);
+}
+
+void store_mode_save(uint8_t mode)
+{
+    const btstack_tlv_t *tlv = NULL;
+    void *ctx = NULL;
+    btstack_tlv_get_instance(&tlv, &ctx);
+    if (tlv == NULL) {
+        return;
+    }
+    tlv->store_tag(ctx, TAG_MODE, &mode, 1);
+}
+
+bool store_mode_load(uint8_t *mode)
+{
+    const btstack_tlv_t *tlv = NULL;
+    void *ctx = NULL;
+    uint8_t value = 0u;
+    btstack_tlv_get_instance(&tlv, &ctx);
+    if (tlv == NULL) {
+        return false;
+    }
+    if (tlv->get_tag(ctx, TAG_MODE, &value, 1) != 1) {
+        return false;
+    }
+    *mode = value;
+    return true;
 }

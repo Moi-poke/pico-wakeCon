@@ -20,6 +20,8 @@ void store_color_load(void);
 bool store_cap_save(void);
 bool store_cap_load(void);
 void store_cap_forget(void);
+void store_mode_save(uint8_t mode);
+bool store_mode_load(uint8_t *mode);
 
 #ifdef __cplusplus
 }
