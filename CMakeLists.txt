@@ -28,13 +28,13 @@ project(pico-wakecon C CXX ASM)
 pico_sdk_init()
 
 add_executable(pico-wakecon
-    main.c
-    cap.c
-    spi.c
-    hid.c
-    store.c
-    link.c
-    ui.c
+    src/main.c
+    src/cap.c
+    src/spi.c
+    src/hid.c
+    src/store.c
+    src/link.c
+    src/ui.c
 )
 
 pico_set_program_name(pico-wakecon "pico-wakecon")
@@ -45,7 +45,7 @@ pico_enable_stdio_uart(pico-wakecon 0)
 pico_enable_stdio_usb(pico-wakecon 1)
 
 target_include_directories(pico-wakecon PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}/src
 )
 
 target_link_libraries(pico-wakecon

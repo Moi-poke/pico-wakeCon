@@ -78,9 +78,10 @@ static void handle_line(void)
         return;
     }
     if (c0 == 'O') {
-        /* 色。旧 C と同書式: O <本体> <ボタン> <左> <右>。先頭1字は読飛ばす。
-         * 応答は4色すべて返す。PC 側は "color " 接頭で成功を判定する。 */
-        if (probe_parse_c_line(line_buf, line_len)) {
+        /* 色。C とは別の命令: O <本体> <ボタン> <左> <右>。
+         * 先頭1字は読飛ばす。応答は4色すべて返す。
+         * PC 側は "color " 接頭で成功を判定する。 */
+        if (probe_parse_color_line(line_buf, line_len)) {
             store_color();
             snprintf(m, sizeof(m),
                      "color body=%02x%02x%02x btn=%02x%02x%02x"

@@ -51,7 +51,7 @@ uint32_t probe_send_interval_ms(void);
 void probe_watchdog_feed(uint32_t now_ms);
 void probe_watchdog_poll(uint32_t now_ms);
 int probe_parse_s_line(const char *s, int len);
-int probe_parse_c_line(const char *s, int len);
+int probe_parse_color_line(const char *s, int len);
 
 #ifdef __cplusplus
 }

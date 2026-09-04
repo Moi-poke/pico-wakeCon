@@ -4,15 +4,15 @@
 // ==========================================================================
 // Pro Controller が Bluetooth で名乗る HID レポート記述子と定数
 //
-// ★出典: DavidPagels/retro-pico-switch の SwitchConsts.h（MIT ライセンス）
-//   ★★これは「バイトの並び」という仕様であり、Switch が受け付ける形は
-//     1 通りしかない。★書き換える余地が無いので、そのまま写す。
-//   ★★★段8-b1 では中身の意味を全部は使わない。SDP と hid_device_init へ
-//     渡すために要るだけである。
+// 出典: DavidPagels/retro-pico-switch の SwitchConsts.h（MIT ライセンス）
+//   これは「バイトの並び」という仕様であり、Switch が受け付ける形は
+//   1 通りしかない。書き換える余地が無いので、そのまま写す。
+//   中身の意味を全部は使わない。SDP と hid_device_init へ渡すために
+//   要るだけである。
 //
-// ★Report ID の一覧（★段8-b3・b4 で使う）
+// Report ID の一覧
 //   0x21 Input  48 byte … サブコマンドへの応答
-//   0x30 Input  48 byte … 通常の入力レポート（★姿勢を送る本体）
+//   0x30 Input  48 byte … 通常の入力レポート（姿勢を送る本体）
 //   0x31 Input 361 byte … NFC / IR
 //   0x32 Input 361 byte … 同上
 //   0x33 Input 361 byte … 同上
@@ -25,34 +25,32 @@
 #include "pico/stdlib.h"
 
 // --------------------------------------------------------------------------
-// ★★★Pro Controller の識別情報（★段8-b1 の要）
-//   ★VID / PID は SDP の PnP レコードで名乗る。
-//   ★★Switch はこれを見て「何者か」を判断する。
+// Pro Controller の識別情報
+//   VID / PID は SDP の PnP レコードで名乗る。
+//   Switch はこれを見て「何者か」を判断する。
 // --------------------------------------------------------------------------
 #define SWITCH_VENDOR_ID       0x057E   // 任天堂
 #define SWITCH_PRODUCT_ID      0x2009   // Pro Controller
 #define SWITCH_PRODUCT_VERSION 0x0001
 
 // Class of Device: 周辺機器 / ゲームパッド。
-//   ★段8-a で推測した値と実物が一致した（BTGOAL 13-1 K5）。
 #define SWITCH_CLASS_OF_DEVICE 0x2508
 
-// ★★★BD_ADDR の先頭 3 バイト（OUI）。
-//   ★これが段8-a で見落としていた最重要の項目である（BTGOAL 13-1 K1）。
-//   ★★Pico 自身のアドレス（88:A2:9E:...）では Switch が拾わなかった。
-//   ★★★残り 3 バイトは乱数にする。同じ Switch へ 2 台繋ぐときに
-//     衝突しないようにするためである。
+// BD_ADDR の先頭 3 バイト（OUI）。
+//   Pico 自身のアドレス（88:A2:9E:...）では Switch が拾わなかった。
+//   残り 3 バイトは乱数にする。同じ Switch へ 2 台繋ぐときに
+//   衝突しないようにするためである。
 #define SWITCH_OUI_0 0x7c
 #define SWITCH_OUI_1 0xbb
 #define SWITCH_OUI_2 0x8a
 
-// 名乗る名前。★GAP と SDP で違う名前を使う（実物がそうなっている）。
+// 名乗る名前。GAP と SDP で違う名前を使う（実物がそうなっている）。
 #define SWITCH_GAP_NAME  "Pro Controller"
 #define SWITCH_HID_NAME  "Wireless Gamepad"
 
 // --------------------------------------------------------------------------
 // HID レポート記述子
-//   ★★これを SDP と hid_device_init の両方へ渡す。
+//   これを SDP と hid_device_init の両方へ渡す。
 // --------------------------------------------------------------------------
 static const uint8_t switch_bt_report_descriptor[] = {
     0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)

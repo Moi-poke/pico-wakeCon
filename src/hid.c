@@ -334,8 +334,8 @@ int probe_parse_s_line(const char *s, int len)
     return 1;
 }
 
-/* C <本体> <ボタン> <左> <右>（各6桁16進）。欠ければ何も変えない。 */
-int probe_parse_c_line(const char *s, int len)
+/* O <本体> <ボタン> <左> <右>（各6桁16進）。欠ければ何も変えない。 */
+int probe_parse_color_line(const char *s, int len)
 {
     uint32_t v[4];
     int idx = 0;

@@ -90,7 +90,7 @@ $ninja = Join-Path $env:USERPROFILE '.pico-sdk/ninja/v1.13.2/ninja.exe'
 
 `build/pico-wakecon.uf2` を BOOTSEL で書き込む。
 
-## 構成
+## 構成（`src/` 配下）
 
 | ファイル | 内容 |
 | ---- | ---- |
@@ -102,6 +102,7 @@ $ninja = Join-Path $env:USERPROFILE '.pico-sdk/ninja/v1.13.2/ninja.exe'
 | `link.c` | 自アドレス・再接続・取込・再生 |
 | `ui.c` | UART/USB 入出力・コマンド・状態表示 |
 | `switch_hid.h` | HID 記述子・VID/PID/COD |
+| `btstack_config.h` | BTstack 設定 |
 
 ## 謝辞・参考
 
