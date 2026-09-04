@@ -4,9 +4,12 @@
  * buttons(2) hat(1) lx ly rx ry(4) vendor(1) で、入力状態は S 行の
  * PC 側値（probe_pc_*）をそのまま使う。BT 側の変換値は使わない。
  *
- * USB の記述子はモードで替える。有線では HID 単体（Switch 向け）、
- * 無線では CDC（PC 向け）である。列挙は起動後に起きるため、起動時に
- * 読んだモードで固定される。切替えは再起動で行う。
+ * USB の記述子はモードで替える。有線では HID＋CDC の複合にする。
+ * CDC は PC に繋いだときの操作口（W 0 で無線へ戻す）であり、
+ * Switch に繋いだときは相手が使わない。HID を先頭に据え置くのは、
+ * Switch が HID を先頭に期待する可能性があるため。
+ * 無線では CDC のみ（PC 向け）である。列挙は起動後に起きるため、
+ * 起動時に読んだモードで固定される。切替えは再起動で行う。
  *
  * 有線の VID/PID は実機の有線コントローラと合わせる。合わないと
  * Switch が無視するためである。 */
@@ -39,7 +42,7 @@ extern uint8_t probe_pc_lx, probe_pc_ly, probe_pc_rx, probe_pc_ry;
 #define CDC_PID 0x000Au
 
 #define WIRE_REPORT_LEN 8u
-#define WIRE_EP_IN 0x81u
+#define WIRE_EP_IN 0x84u
 #define WIRE_EP_INTERVAL 8u
 
 /* 8 バイト報告の記述子。
@@ -91,8 +94,14 @@ enum {
     ITF_NUM_CDC_DATA,
     ITF_NUM_TOTAL_WIRELESS,
 };
-/* 有線構成は HID 単体なので番号は 0 から振り直す。 */
+/* 有線は HID 複合。HID を 0 に据え置き、CDC を後ろへ足す。
+ * Switch が HID を先頭に期待する可能性があるため順序を変えない。
+ * EP 番号は方向ごとに重ねない（CDC 通知 0x81・CDC IN 0x83 のため
+ * HID IN は 0x84）。 */
 #define ITF_NUM_HID_WIRED 0
+#define ITF_NUM_CDC_WIRED 1
+#define ITF_NUM_CDC_DATA_WIRED 2
+#define ITF_NUM_TOTAL_WIRED 3
 
 #define EPNUM_CDC_NOTIF 0x81u
 #define EPNUM_CDC_OUT   0x02u
@@ -101,8 +110,7 @@ enum {
 #define CONFIG_TOTAL_LEN_WIRELESS \
     (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN)
 #define CONFIG_TOTAL_LEN_WIRED \
-    (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN)
-#define WIRED_INTF_COUNT 1
+    (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN)
 
 static uint8_t serial_str[2 * PICO_UNIQUE_BOARD_ID_SIZE_BYTES + 1];
 
@@ -186,7 +194,7 @@ uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
                TUD_CDC_DESC_LEN);
         p = desc_wired;
         memcpy(p, (uint8_t[]){ TUD_CONFIG_DESCRIPTOR(
-                     1, WIRED_INTF_COUNT, 0,
+                     1, ITF_NUM_TOTAL_WIRED, 0,
                      CONFIG_TOTAL_LEN_WIRED, 0x80, 100) },
                TUD_CONFIG_DESC_LEN);
         p += TUD_CONFIG_DESC_LEN;
@@ -195,6 +203,11 @@ uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
                      sizeof(wire_report_desc), WIRE_EP_IN,
                      CFG_TUD_HID_EP_BUFSIZE, WIRE_EP_INTERVAL) },
                TUD_HID_DESC_LEN);
+        p += TUD_HID_DESC_LEN;
+        memcpy(p, (uint8_t[]){ TUD_CDC_DESCRIPTOR(
+                     ITF_NUM_CDC_WIRED, 0, EPNUM_CDC_NOTIF, 8,
+                     EPNUM_CDC_OUT, EPNUM_CDC_IN, 64) },
+               TUD_CDC_DESC_LEN);
     }
     return mode_is_wired() ? desc_wired : desc_wireless;
 }
@@ -328,17 +341,41 @@ void wire_task(void)
     wire_send_if_changed();
 }
 
-/* ---- USB CDC の簡易ドライバ（無線モードの PC 接続用） ----
+/* ---- USB CDC の簡易ドライバ ----
  * SDK の stdio_usb は使わない。記述子を自前（モード別）にするため、
  * SDK の CDC 記述子と衝突するからである。読み書きの口だけ自前で持つ。
- * 有線では USB が Switch 側に繋がるため、CDC は使わない。 */
+ *
+ * 有線でも CDC を出す。USB を PC に繋いだときに操作口として使う
+ * （W 0 で無線へ戻す）。Switch に繋いだときは相手が CDC を使わない
+ * ため、出力は DTR のあるときだけ行う。DTR が無いのに送ると、
+ * FIFO が詰まって 1 行ごとに待ちが発生する。 */
 
 static bool cdc_usable(void)
 {
     if (!tud_inited()) {
         return false;
     }
-    return !mode_is_wired() && tud_mounted();
+    if (!tud_mounted()) {
+        return false;
+    }
+    if (!mode_is_wired()) {
+        return true;
+    }
+    /* 有線で Switch に繋いだときは DTR が立たない。PC の端末は立てる
+     * （pyserial は open 時に立てる）。Switch 相手に送らないための guard。 */
+    return tud_cdc_connected();
+}
+
+static bool cdc_readable(void)
+{
+    if (!tud_inited()) {
+        return false;
+    }
+    if (!tud_mounted()) {
+        return false;
+    }
+    /* 読む側は DTR を問わない。届いたものだけ拾う。 */
+    return true;
 }
 
 static void cdc_out_chars(const char *buf, int length)
@@ -378,7 +415,7 @@ static void cdc_out_flush(void)
 static int cdc_in_chars(char *buf, int length)
 {
     uint32_t n;
-    if (!cdc_usable()) {
+    if (!cdc_readable()) {
         return PICO_ERROR_NO_DATA;
     }
     tud_task();
