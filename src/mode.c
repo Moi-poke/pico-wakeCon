@@ -103,11 +103,6 @@ static void mode_blink_party(void)
 
 void mode_poll(uint32_t now_ms)
 {
-    /* 一時診断: BOOTSEL 読みと LED 書きを止め、ループ生存を見る。
-     * どちらかがループを止めている疑いがあるため。安定したら戻す。 */
-    (void)now_ms;
-    return;
-#if 0
     /* 10ms 周期で呼ばれるが、読むのは 100ms ごとにする。
      * フラッシュの CS を触るため、頻度は低いほど安全。 */
     static uint8_t div = 0;
@@ -120,9 +115,9 @@ void mode_poll(uint32_t now_ms)
         holding = false;
         hold_start_ms = 0;
         hold_armed = false;
-        /* 長押しをやめたら LED をモード表示に戻す。点滅で直接
-         * 書いているため、記憶を捨ててから戻す。 */
-        led_last = -1;
+        /* LED は変化時だけ書く。毎回書くと CYW43 の SPI が塞がり、
+         * HCI 通信の最中にぶつかってループが止まる。
+         * 書くのは起動時・押下開始・解放・切替えの4場面だけ。 */
         mode_led_apply();
         return;
     }
@@ -131,12 +126,17 @@ void mode_poll(uint32_t now_ms)
         hold_start_ms = now_ms;
         blink_last_ms = now_ms;
         blink_on = false;
+        /* 押下開始は LED 変化として書く。点滅の起点。 */
+        led_last = -1;
+        mode_led_apply();
         return;
     }
-    /* 長押し中は点滅して受付中を知らせる。 */
+    /* 長押し中は点滅して受付中を知らせる。押している間の
+     * 短い期間だけ直接書く。常時の定期書きはしない。 */
     if (!hold_armed && (now_ms - blink_last_ms) >= MODE_BLINK_MS) {
         blink_last_ms = now_ms;
         blink_on = !blink_on;
+        led_last = blink_on ? 1 : 0;
         cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, blink_on ? 1 : 0);
     }
     if ((now_ms - hold_start_ms) >= MODE_HOLD_MS) {
@@ -147,9 +147,9 @@ void mode_poll(uint32_t now_ms)
         probe_line(mode_is_wired() ? "switch to wired. reboot"
                                    : "switch to wireless. reboot");
         mode_blink_party();
+        led_last = mode_is_wired() ? 0 : 1;
         watchdog_reboot(0u, 0u, 0u);
         while (1) {
         }
     }
-#endif
 }
