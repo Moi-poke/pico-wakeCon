@@ -103,6 +103,11 @@ static void mode_blink_party(void)
 
 void mode_poll(uint32_t now_ms)
 {
+    /* 一時診断: BOOTSEL 読みと LED 書きを止め、ループ生存を見る。
+     * どちらかがループを止めている疑いがあるため。安定したら戻す。 */
+    (void)now_ms;
+    return;
+#if 0
     /* 10ms 周期で呼ばれるが、読むのは 100ms ごとにする。
      * フラッシュの CS を触るため、頻度は低いほど安全。 */
     static uint8_t div = 0;
@@ -146,4 +151,5 @@ void mode_poll(uint32_t now_ms)
         while (1) {
         }
     }
+#endif
 }
