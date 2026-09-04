@@ -103,11 +103,12 @@ static void mode_blink_party(void)
 
 void mode_poll(uint32_t now_ms)
 {
-    /* 10ms 周期で呼ばれるが、読むのは 100ms ごとにする。
-     * フラッシュの CS を触るため、頻度は低いほど安全。 */
+    /* 10ms 周期で呼ばれるが、読むのは 200ms ごとにする。
+     * フラッシュの CS を触るため、頻度は低いほど安全。
+     * 2 秒長押しの検出には十分。点滅（200ms）も同じ刻みで動く。 */
     static uint8_t div = 0;
     bool held;
-    if ((++div % 10u) != 0u) {
+    if ((++div % 20u) != 0u) {
         return;
     }
     held = mode_bootsel_held();
