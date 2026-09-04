@@ -40,7 +40,6 @@ static void uart_poll_handler(btstack_timer_source_t *ts)
     probe_uart_task();
     /* TinyUSB の駆動。有線では報告送信、無線では CDC の面倒を見る。 */
     wire_task();
-    mode_poll(to_ms_since_boot(get_absolute_time()));
     btstack_run_loop_set_timer(ts, UART_POLL_MS);
     btstack_run_loop_add_timer(ts);
 }
@@ -265,10 +264,6 @@ int main(void)
     probe_line("");
     probe_line("=== wakecon ===");
 
-    /* 起動時自己診断。不具合時はどこまで出たかが手がかりになる。 */
-    probe_line("selftest bootsel...");
-    probe_line(mode_bootsel_held() ? "bootsel=1" : "bootsel=0");
-
     if (cyw43_arch_init() != 0) {
         probe_line("NG: cyw43_arch_init");
         while (1) {
@@ -282,8 +277,6 @@ int main(void)
     if (!wire_usb_init()) {
         probe_line("NG: tud_init");
     }
-    probe_line("selftest tud...");
-    probe_line(wire_selftest() == 0 ? "tud ok" : "tud NG");
 
     if (!mode_is_wired()) {
         gap_discoverable_control(1);

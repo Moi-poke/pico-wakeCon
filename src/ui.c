@@ -10,7 +10,6 @@
 #include "pico/error.h"
 #include "pico/time.h"
 #include "hardware/uart.h"
-#include "hardware/watchdog.h"
 #include "cap.h"
 #include "hid.h"
 #include "link.h"
@@ -200,21 +199,14 @@ static void handle_line(void)
         return;
     }
     if (c0 == 'W') {
-        /* 有線無線の照会と切替。W だけなら表示、W 0/1 で保存して再起動。
-         * ボタン長押しと同じ結果になる。 */
+        /* 有線無線の照会と切替。W だけなら表示、W 0/1 で保存して再起動。 */
         if (line_len > 1) {
             int p = 1;
             while (p < line_len && line_buf[p] == ' ') {
                 p++;
             }
             if (p < line_len && (line_buf[p] == '0' || line_buf[p] == '1')) {
-                uint8_t want = (uint8_t)(line_buf[p] - '0');
-                store_mode_save(want);
-                probe_line(want ? "mode=wired. reboot" : "mode=wireless. reboot");
-                sleep_ms(200);
-                watchdog_reboot(0u, 0u, 0u);
-                while (1) {
-                }
+                mode_request_switch((uint8_t)(line_buf[p] - '0'));
             }
             probe_line("usage: W [0 wireless | 1 wired]");
             return;
@@ -295,12 +287,7 @@ void probe_show_status(void)
 void probe_heartbeat_handler(btstack_timer_source_t *ts)
 {
     char msg[144];
-    /* 一時診断: ループ生存 tick。5 秒ごとに数える。安定したら消す。 */
-    static uint8_t tick_n = 0;
     probe_uart_task();
-    if ((++tick_n % 5u) == 0u) {
-        probe_line("tick alive");
-    }
     if (probe_reconnect_pending) {
         probe_reconnect_pending = false;
         snprintf(msg, sizeof(msg), "reconnect try=%lu rc=0x%02x",

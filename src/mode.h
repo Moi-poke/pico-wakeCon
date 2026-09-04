@@ -2,7 +2,7 @@
 #define WAKECON_MODE_H
 
 /* 有線 / 無線モードの管理。
- * BOOTSEL ボタン長押しで切替え、Flash に保存、再起動で反映する。 */
+ * 切替えは W コマンドで行い、Flash に保存、再起動で反映する。 */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -21,14 +21,11 @@ void mode_boot(void);
 uint8_t mode_get(void);
 bool mode_is_wired(void);
 
-/* 10ms 周期で呼ぶ。BOOTSEL が HOLD_MS 連続したら切替えて再起動する。 */
-void mode_poll(uint32_t now_ms);
-
-/* LED へ反映する。無線は点灯、有線は消灯。 */
+/* LED へ反映する。無線は点灯、有線は消灯。変化時だけ書く。 */
 void mode_led_apply(void);
 
-/* BOOTSEL ボタンの状態を読む。RAM 上で実行する。 */
-bool mode_bootsel_held(void);
+/* モードを保存して再起動する。W コマンドから呼ぶ。戻らない。 */
+void mode_request_switch(uint8_t want);
 
 #ifdef __cplusplus
 }

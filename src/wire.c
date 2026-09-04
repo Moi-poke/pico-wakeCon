@@ -328,16 +328,6 @@ void wire_task(void)
     wire_send_if_changed();
 }
 
-/* 起動時自己診断用に tud_task を1回だけ回す。戻れば生存。 */
-int wire_selftest(void)
-{
-    if (!tud_inited()) {
-        return 2;
-    }
-    tud_task();
-    return 0;
-}
-
 /* ---- USB CDC の簡易ドライバ（無線モードの PC 接続用） ----
  * SDK の stdio_usb は使わない。記述子を自前（モード別）にするため、
  * SDK の CDC 記述子と衝突するからである。読み書きの口だけ自前で持つ。
