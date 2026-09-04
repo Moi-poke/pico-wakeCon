@@ -12,7 +12,6 @@
 
 #include "hardware/gpio.h"
 #include "hardware/structs/ioqspi.h"
-#include "hardware/structs/sio.h"
 #include "hardware/sync.h"
 #include "hardware/watchdog.h"
 #include "pico/cyw43_arch.h"
@@ -22,7 +21,8 @@
 #include "ui.h"
 
 /* BOOTSEL はフラッシュの CS（QSPI_SS）に繋がっている。起動時以外は
- * スイッチとして読める。CS を一瞬だけ Hi-Z 入力にし、SIO 経由で読む。
+ * スイッチとして読める。CS を一瞬だけ Hi-Z 入力にし、パッド入力を
+ * 直接読む。SIO 経由ではなく STATUS の INFROMPAD を見る。
  * フラッシュ実行と被ると落ちるため RAM 上・割込み禁止で読む。 */
 #define BOOTSEL_CS_INDEX 1u
 #define MODE_HOLD_MS 2000u
@@ -45,8 +45,9 @@ bool __not_in_flash_func(mode_bootsel_held)(void)
                     IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_BITS);
     for (volatile int i = 0; i < 1000; ++i) {
     }
-    /* ボタンは押下で Low になる。 */
-    bool pressed = !(sio_hw->gpio_hi_in & (1u << BOOTSEL_CS_INDEX));
+    /* ボタンは押下で Low になる。パッド入力を直接見る。 */
+    bool pressed = !(ioqspi_hw->io[BOOTSEL_CS_INDEX].status &
+                     IO_QSPI_GPIO_QSPI_SS_STATUS_INFROMPAD_BITS);
     hw_write_masked(&ioqspi_hw->io[BOOTSEL_CS_INDEX].ctrl,
                     (uint32_t)GPIO_OVERRIDE_NORMAL
                         << IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_LSB,
@@ -102,7 +103,14 @@ static void mode_blink_party(void)
 
 void mode_poll(uint32_t now_ms)
 {
-    bool held = mode_bootsel_held();
+    /* 10ms 周期で呼ばれるが、読むのは 100ms ごとにする。
+     * フラッシュの CS を触るため、頻度は低いほど安全。 */
+    static uint8_t div = 0;
+    bool held;
+    if ((++div % 10u) != 0u) {
+        return;
+    }
+    held = mode_bootsel_held();
     if (!held) {
         holding = false;
         hold_start_ms = 0;

@@ -295,7 +295,12 @@ void probe_show_status(void)
 void probe_heartbeat_handler(btstack_timer_source_t *ts)
 {
     char msg[144];
+    /* 一時診断: ループ生存 tick。5 秒ごとに数える。安定したら消す。 */
+    static uint8_t tick_n = 0;
     probe_uart_task();
+    if ((++tick_n % 5u) == 0u) {
+        probe_line("tick alive");
+    }
     if (probe_reconnect_pending) {
         probe_reconnect_pending = false;
         snprintf(msg, sizeof(msg), "reconnect try=%lu rc=0x%02x",
