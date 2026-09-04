@@ -14,6 +14,9 @@ extern "C" {
 /* 10ms 周期で呼ぶ。TinyUSB の駆動と報告の送信を行う。 */
 void wire_task(void);
 
+/* 起動時自己診断用に tud_task を1回だけ回す。0 なら生存。 */
+int wire_selftest(void);
+
 /* 有線報告 1 件を組み立てて送る。変化がなければ送らない。 */
 void wire_send_if_changed(void);
 

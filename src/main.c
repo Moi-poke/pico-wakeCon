@@ -265,6 +265,10 @@ int main(void)
     probe_line("");
     probe_line("=== wakecon ===");
 
+    /* 起動時自己診断。不具合時はどこまで出たかが手がかりになる。 */
+    probe_line("selftest bootsel...");
+    probe_line(mode_bootsel_held() ? "bootsel=1" : "bootsel=0");
+
     if (cyw43_arch_init() != 0) {
         probe_line("NG: cyw43_arch_init");
         while (1) {
@@ -278,6 +282,8 @@ int main(void)
     if (!wire_usb_init()) {
         probe_line("NG: tud_init");
     }
+    probe_line("selftest tud...");
+    probe_line(wire_selftest() == 0 ? "tud ok" : "tud NG");
 
     if (!mode_is_wired()) {
         gap_discoverable_control(1);
