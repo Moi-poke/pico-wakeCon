@@ -115,4 +115,9 @@ $ninja = Join-Path $env:USERPROFILE '.pico-sdk/ninja/v1.13.2/ninja.exe'
 
 ## ライセンス
 
-MIT License
+- 本リポジトリのコード: MIT License（`LICENSE` ファイル参照）
+- `src/switch_hid.h` の HID 記述子: Copyright (c) 2023 David Pagels（MIT。同ファイル内に許諾文を同梱）
+- 注意: ビルド時に Pico SDK 経由でリンクされる BTstack は、BlueKitchen の
+  独自許諾（非商用に限り無償）である。バイナリ（`.uf2`）を配布・商用利用
+  する場合は、別途 BlueKitchen への確認が必要。ソースの MIT とは範囲が
+  異なるため混同しないこと。
