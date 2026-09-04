@@ -78,12 +78,17 @@ static void handle_line(void)
         return;
     }
     if (c0 == 'O') {
-        /* 色。旧 C と同書式: O <本体> <ボタン> <左> <右>。先頭1字は読飛ばす。 */
+        /* 色。旧 C と同書式: O <本体> <ボタン> <左> <右>。先頭1字は読飛ばす。
+         * 応答は4色すべて返す。PC 側は "color " 接頭で成功を判定する。 */
         if (probe_parse_c_line(line_buf, line_len)) {
             store_color();
-            snprintf(m, sizeof(m), "color body=%02x%02x%02x btn=%02x%02x%02x",
+            snprintf(m, sizeof(m),
+                     "color body=%02x%02x%02x btn=%02x%02x%02x"
+                     " left=%02x%02x%02x right=%02x%02x%02x",
                      spi_color_6050[0], spi_color_6050[1], spi_color_6050[2],
-                     spi_color_6050[3], spi_color_6050[4], spi_color_6050[5]);
+                     spi_color_6050[3], spi_color_6050[4], spi_color_6050[5],
+                     spi_color_6050[6], spi_color_6050[7], spi_color_6050[8],
+                     spi_color_6050[9], spi_color_6050[10], spi_color_6050[11]);
             probe_line(m);
         } else {
             probe_line("usage: O <body> <btn> <left> <right> (hex)");
@@ -231,6 +236,16 @@ void probe_show_status(void)
              (unsigned)probe_hid_cid, probe_full_mode ? 1u : 0u,
              link_key_count(), probe_cap_valid ? 1u : 0u,
              probe_scanning ? 1u : 0u, probe_beacon ? 1u : 0u);
+    probe_line(m);
+    /* 現在の本体色。O で変えた内容が残っているかここで確かめられる。
+     * 形式は O の応答と同じ "color " 接頭にする。 */
+    snprintf(m, sizeof(m),
+             "color body=%02x%02x%02x btn=%02x%02x%02x"
+             " left=%02x%02x%02x right=%02x%02x%02x",
+             spi_color_6050[0], spi_color_6050[1], spi_color_6050[2],
+             spi_color_6050[3], spi_color_6050[4], spi_color_6050[5],
+             spi_color_6050[6], spi_color_6050[7], spi_color_6050[8],
+             spi_color_6050[9], spi_color_6050[10], spi_color_6050[11]);
     probe_line(m);
     if (probe_cap_valid) {
         snprintf(m, sizeof(m),
