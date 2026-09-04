@@ -288,6 +288,7 @@ void probe_heartbeat_handler(btstack_timer_source_t *ts)
 {
     char msg[144];
     probe_uart_task();
+    mode_second_tick();
     if (probe_reconnect_pending) {
         probe_reconnect_pending = false;
         snprintf(msg, sizeof(msg), "reconnect try=%lu rc=0x%02x",

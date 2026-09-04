@@ -27,6 +27,9 @@ void mode_led_apply(void);
 /* モードを保存して再起動する。W コマンドから呼ぶ。戻らない。 */
 void mode_request_switch(uint8_t want);
 
+/* 1 秒ごとに呼ぶ。長く動けば救済の回数を消す。 */
+void mode_second_tick(void);
+
 #ifdef __cplusplus
 }
 #endif
