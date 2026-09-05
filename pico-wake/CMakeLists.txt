@@ -70,3 +70,8 @@ target_link_libraries(pico-wake
 )
 
 pico_add_extra_outputs(pico-wake)
+
+option(BUILD_HOST_TESTS "Build host unit tests (standalone tests/host)" OFF)
+if(BUILD_HOST_TESTS)
+  add_subdirectory(tests/host)
+endif()
