@@ -240,9 +240,11 @@ static void cmd_w(void)
         return;
     }
     /* Classic 側の始末 (接続中なら能動切断＋待ち受け停止) も link 側で行う。
-     * 発信抑止だけでは Switch からの呼び直しを受けて再接続するため。 */
+     * 発信抑止だけでは Switch からの呼び直しを受けて再接続するため。
+     * モードは Flash に残し、次回起動時に復元する (起動時から電波OFF)。 */
     usb_wired_set_enabled(v == 1u);
     link_apply_wired_mode(v == 1u);
+    store_wired(v == 1u);
     report_usb_line();
 }
 

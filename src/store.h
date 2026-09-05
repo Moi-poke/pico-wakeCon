@@ -15,6 +15,8 @@ extern "C" {
 
 void store_host(bd_addr_t addr);
 bool store_host_load(void);
+void store_wired(bool en);
+bool store_wired_load(void);
 void store_color(void);
 void store_color_load(void);
 bool store_cap_save(void);

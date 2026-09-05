@@ -92,9 +92,11 @@ void link_mark_connected(void)
     outgoing_at_ms = 0u;
 }
 
-/* 有線モード保持。BT 電源の二重切替を避けるための現在値。 */
+/* 有線モード保持。BT 電源の二重切替を避けるための現在値。
+ * 電源操作は link_radio_update に一元化するため初期値は false
+ * (起動時の link_apply_wired_mode が必要に応じて ON する)。 */
 static bool link_wired;
-static bool bt_powered = true; /* 起動時は main が HCI_POWER_ON する */
+static bool bt_powered;
 
 void link_radio_update(void)
 {

@@ -122,8 +122,9 @@ static void handle_bt_ready(uint8_t *packet)
     snprintf(msg, sizeof(msg), "link keys=%d",
              link_key_count());
     probe_line(msg);
-    store_color_load();
-    if (store_host_load()) {
+    /* 保存の読込自体は main 側で済ませてある (有線起動では BT READY が
+     * 来ないため)。ここでは読込済みの状態だけを見る。 */
+    if (probe_host_known) {
         snprintf(msg, sizeof(msg), "reconnect to %s",
                  bd_addr_to_str(probe_host_addr));
         probe_line(msg);
@@ -132,7 +133,7 @@ static void handle_bt_ready(uint8_t *packet)
     } else {
         probe_line("no host. open Change-Grip screen on Switch");
     }
-    if (store_cap_load()) {
+    if (probe_cap_valid) {
         probe_line("cap saved. B to wake");
     } else {
         probe_line("cap none. C to capture Joy-Con wake");
@@ -310,6 +311,11 @@ int main(void)
     /* 起動中のつなぎポンプ。run loop 開始前の約2〜3秒に SETUP を落とさない。 */
     usb_wired_pump();
     link_init();
+    /* 保存の読込は BT の生死によらず行う。有線起動では BT READY が
+     * 来ないため、ここで読んでおかないと ? 表示が既定値になる。 */
+    store_color_load();
+    store_host_load();
+    store_cap_load();
 
     gap_discoverable_control(1);
     gap_connectable_control(1);
@@ -349,7 +355,11 @@ int main(void)
     hci_events.callback = &packet_handler;
     hci_add_event_handler(&hci_events);
 
-    hci_power_control(HCI_POWER_ON);
+    /* 保存された W を復元する。有線起動は電波を上げず USB 先行で列挙させる
+     * (無線チップ動作中は Switch が列挙しない実測のため)。電源操作は
+     * link_radio_update に一元化する。BT 内部の初期化順は変えない。 */
+    usb_wired_set_enabled(store_wired_load());
+    link_apply_wired_mode(usb_wired_is_enabled());
     /* transport が SDK 既定 MAC を入れるため後で上書きする。 */
     hci_set_bd_addr(probe_addr);
     usb_wired_pump();
@@ -375,10 +385,10 @@ int main(void)
     btstack_run_loop_add_timer(&usb_poll);
 
     probe_line("ready. C capture / B wake / S input / ? status");
-    /* 起動直後は USB を密にポンプする。ホストが列挙するまで (最大10秒)。
-     * 厳格なホストの SETUP を落とさないため。列挙済みなら即進むので
-     * 無線運用の起動は遅くならない。以後は 1ms タイマに任せる。 */
-    {
+    /* 有線起動のときだけ USB を密にポンプする。ホストが列挙するまで
+     * (最大10秒)。厳格なホストの SETUP を落とさないため。列挙済みなら
+     * 即進む。無線起動では待たない (USB は給電専用のため)。 */
+    if (usb_wired_is_enabled()) {
         uint32_t pump_until =
             to_ms_since_boot(get_absolute_time()) + 10000u;
         while (!usb_wired_is_configured() &&
