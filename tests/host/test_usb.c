@@ -145,6 +145,17 @@ int main(void)
             CHECK(out[20] == 0xFFu && out[21] == 0xFFu);
             CHECK(out[22] == 0xFFu && out[23] == 0xFFu);
         }
+        /* 0x6000 は空応答 (Switch 2 の 2162-0002 対策)。 */
+        {
+            uint8_t q00[16] = {0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10,
+                               0x00, 0x60, 0, 0, 16};
+            n = usb_build_21_reply(q00, 16, out, sizeof(out), &ctx);
+            CHECK(n == 64 && out[13] == 0x90u && out[14] == 0x10u);
+            CHECK(out[15] == 0x00u && out[16] == 0x60u && out[19] == 16u);
+            for (i = 20; i < 36; i++) {
+                CHECK(out[i] == 0xFFu);
+            }
+        }
         /* 0x6020 は妥当な校正値 (全 0 ではない)。 */
         {
             uint8_t q20[16] = {0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10,

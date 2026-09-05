@@ -132,7 +132,13 @@ int usb_build_21_reply(const uint8_t *req, int req_len, uint8_t *out,
             out[18] = 0x00u;
             out[19] = want;
             hit = spi_find(addr);
-            if (hit != NULL && want <= hit->size) {
+            if (addr == 0x6000u) {
+                /* シリアル域は空 (0xFF) で答える。実機シリアル風の値を
+                 * 返すと Switch 2 が 2162-0002 で落ちる実測のため。
+                 * 2wiCC も serial none (0xFF) で運用している。
+                 * BT 側の表は変えない (Switch 1 無線は現状で動作中のため)。 */
+                memset(&out[20], 0xFF, want);
+            } else if (hit != NULL && want <= hit->size) {
                 memcpy(&out[20], hit->data, want);
             } else if (addr >= 0x6000u && addr < 0x6100u &&
                        (uint32_t)addr + want <= 0x6100u) {
