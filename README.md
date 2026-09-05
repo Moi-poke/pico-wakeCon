@@ -18,6 +18,23 @@ Nintendo Switch 1 用 Pro Controller エミュレータです。
 - Nintendo Switch 1（プロコン操作の対象）
 - PC との接続：USB-シリアル変換アダプタ（GP0/GP1、115200bps）または USB CDC
 
+## 初回セットアップ
+
+1. Pico の GP0（TX）/GP1（RX）/GND を USB-シリアル変換アダプタに接続します
+   （USB CDC を使う場合は不要です）。シリアル端末を 115200bps で開きます
+2. BOOTSEL ボタンを押しながら Pico を PC に接続し、出てきたドライブに
+   `build/pico-wakecon.uf2` を書き込みます（ビルド手順は後述）
+3. 起動すると次の行が出ます。出なければ配線・端末設定を見直してください
+
+```
+=== wakecon ===
+BT READY 7c:bb:8a:xx:xx:xx
+addr ok (7C:BB:8A)
+ready. C capture / B wake / S input / ? status
+```
+
+4. `?` を入力し、`st ...` 行が返ることを確認します（書式は後述）
+
 ## 使い方
 
 ### 1. wake パケットの取込
@@ -99,6 +116,36 @@ O 313131 0f0f0f 0ab9e6 ff3c28   ← 本体・ボタン・左・右の順
 | `K` | Classic リンク鍵の全削除 |
 | `P` | PONG（疎通確認） |
 
+### エラー行の意味
+
+操作が受け付けられないときは、理由付きの行が返ります。
+
+| 表示 | 意味・対処 |
+| ---- | ---- |
+| `C ERR BUSY` | 取込・再生の実行中です。終わってから再実行してください |
+| `C ERR CONNECTED` | Switch 1 と接続中は取込できません。Switch 1 側で切断してから実行してください |
+| `B ERR NO_SAVE. run C first` | 保存済みビーコンがありません。先に `C` で取り込んでください |
+| `B ERR BUSY` / `B ERR CONNECTED` | `C ERR ...` と同様です |
+| `X ERR BUSY` | 取込・再生の実行中は破棄できません。終わってから実行してください |
+| `usage: O <body> <btn> <left> <right> (hex)` | `O` の書式が正しくありません。各色 6 桁 16 進数で指定してください |
+
+### `?` 状態表示の読み方
+
+`?` を入力すると、次の 3 種類の行が返ります。
+
+```
+st host=1 cid=1537 full=1 keys=1 saved=1 scan=0 bcn=0
+color body=313131 btn=0f0f0f left=0ab9e6 right=ff3c28
+saved spoof=aabbccddeeff sw=112233445566
+```
+
+* `st` 行：`host`＝相手番地の記憶有無、`cid`＝HID 接続 ID（0 は未接続）、
+  `full`＝入力レポート送出中、`keys`＝Classic リンク鍵の数、
+  `saved`＝ビーコン保存有無、`scan`/`bcn`＝取込・再生の実行中
+* `color` 行：現在の本体色（`O` の応答と同じ書式）
+* `saved` 行：再生に使う偽装元 MAC（`spoof`）と Switch 側 MAC（`sw`）。
+  未保存のときは出ません
+
 ## 注意事項
 
 - 取込元は Switch 2 にペアリング済みのコントローラにしてください。
@@ -109,6 +156,27 @@ O 313131 0f0f0f 0ab9e6 ff3c28   ← 本体・ボタン・左・右の順
   繋ぎ直すので、そのままお待ちください
 - リンク鍵の不整合時は Pico 側で `K` を実行し、Switch 側の登録も解除して
   ください。両側の情報を消去してから繋ぎ直します
+
+## トラブルシューティング
+
+基本の切分け手順は `?` で状態確認 → `D`・`M` で詳細表示 → `K` で修復です。
+
+* **繋がらない・すぐ切れる**: `D` で HCI ログを on にして再現させます
+  * `console stall (no SSP). power OFF Switch, or K + re-pair` が出たら、
+    Switch 側が認証前に切断しています。Switch の電源を一度 OFF にし、
+    解消しなければ Pico 側で `K`、Switch 側でコントローラー登録解除の
+    両方を行ってから繋ぎ直してください
+  * `hid open FAIL status=0x66`（`0x66=refused security`）も鍵不整合です。
+    同じく両側の情報を消去して繋ぎ直してください
+  * `conn status=0x04`（Page Timeout）は相手が無応答です。Switch 1 の
+    「持ちかた／順番を変える」画面を開いているか確認してください
+* **自アドレスがおかしい**: 起動時に `addr NG (SDK default remains)` が出たら、
+  自アドレスの上書きに失敗しています。`BT READY` 行の MAC を確認してください
+* **入力が止まらなくなる**: `WD` 行が出たら、PC からの入力途絶を検出して
+  中立化した合図です。正常動作なので、そのまま次の `S` を送ってください
+* **切分け用表示**: `D` は HCI 生ログの on/off、`M` は 1 秒ごとの
+  監視表示（`mon ...` 行）の on/off です。どちらも既定 off で、問題が
+  再現したら on にしてログを取ってください
 
 ## ビルド
 
@@ -132,10 +200,16 @@ $ninja = Join-Path $env:USERPROFILE '.pico-sdk/ninja/v1.13.2/ninja.exe'
 | `hid.c` | 入力状態・サブコマンド応答・送信 |
 | `spi.c` | Pro Controller SPI フラッシュ値 |
 | `store.c` | Flash 保存（相手番地・色・取込） |
-| `link.c` | 自アドレス・再接続・取込・再生 |
+| `link.c` | 取込・再生期限の振分け（薄層） |
+| `link_conn.c` | 自アドレス・再接続・リンク鍵数 |
+| `link_cap.c` | wake ビーコン取込・表・保存判定 |
+| `link_beacon.c` | wake 再生・MAC 偽装・LE 追跡 |
 | `ui.c` | UART/USB 入出力・コマンド・状態表示 |
+| `util.c` | 純粋ヘルパー（16進・色表示等） |
 | `switch_hid.h` | HID 記述子・VID/PID/COD |
 | `btstack_config.h` | BTstack 設定 |
+
+ホスト単体テストは `tests/host`（`test_util`・`test_cap`、CTest）。
 
 ## 謝辞・参考
 
