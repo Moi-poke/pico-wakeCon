@@ -199,8 +199,8 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
     }
     n = usb_build_81_reply(req, (int)req_len, reply, (int)sizeof(reply),
                            mac_rev, USB_WIRED_PROVISIONAL_DEV_TYPE);
-    if (n < 2) {
-        return; /* 未対応 (91/92 等) は送らない */
+    if (n <= 0) {
+        return; /* 不正入力のみ送らない。応答は常に 64B (ID+63)。 */
     }
     if (!tud_hid_ready()) {
         return;

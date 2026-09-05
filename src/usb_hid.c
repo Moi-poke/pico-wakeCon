@@ -7,7 +7,11 @@ bool usb_req_is_handshake(const uint8_t *req, int req_len)
     return req != NULL && req_len >= 2 && req[0] == 0x80u;
 }
 
-/* 80 01/02/03/04/05/06 のみ応答。91/92 等は 0 (未対応)。 */
+/* 80 xx への応答は常に 64B ゼロパディングで返す。
+ * 2wiCC (実働) が全応答を 64B (ID+63) で送る作りのため。
+ * 短縮応答では Switch 2 が先に進まない実測 (last=02 で停止)。
+ * 91/92・未知サブコマンドも 81 <sub> + 0 埋めで返す。
+ * 無応答にするとホストが止まる。 */
 int usb_build_81_reply(const uint8_t *req, int req_len, uint8_t *out,
                        int out_max, const uint8_t mac[6], uint8_t dev_type)
 {
@@ -18,33 +22,29 @@ int usb_build_81_reply(const uint8_t *req, int req_len, uint8_t *out,
     if (!usb_req_is_handshake(req, req_len)) {
         return 0;
     }
+    if (out_max < 64) {
+        return 0;
+    }
     sub = req[1];
-    /* Task 1 の対応表で各分岐の応答バイト列を確定させる。 */
+    memset(out, 0, 64);
     switch (sub) {
-        case 0x01u: {
-            /* 実測未確認: 81 01 応答の全バイトは仮置き (81 01 00 <type> <mac6>)。実測で確定後に固定化。 */
-            if (out_max < 10) {
-                return 0;
-            }
+        case 0x01u:
+            /* 81 01 00 <type> <mac6> + 0 埋め。
+             * Pro=0x03 は 2wiCC の kUsbDeviceTypeProController で確認。 */
             out[0] = 0x81u; out[1] = 0x01u; out[2] = 0x00u;
             out[3] = dev_type;
             memcpy(&out[4], mac, 6);
-            return 10;
-        }
+            return 64;
         case 0x02u:
         case 0x03u:
-        /* 実測未確認: 80 0x04 の応答有無はT1ハードで確定 */
         case 0x04u:
-        /* 実測未確認: 80 0x05 の応答有無はT1ハードで確定 */
         case 0x05u:
-        /* 実測未確認: 80 0x06 の応答有無はT1ハードで確定 */
         case 0x06u:
-            if (out_max < 2) {
-                return 0;
-            }
+            /* 04/05/06 の応答有無は 2wiCC の実働で確認 (R-T1-1 解消)。 */
             out[0] = 0x81u; out[1] = sub;
-            return 2;
+            return 64;
         default:
-            return 0;
+            out[0] = 0x81u; out[1] = sub;
+            return 64;
     }
 }
