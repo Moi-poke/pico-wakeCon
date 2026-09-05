@@ -27,6 +27,8 @@ TinyUSB 依存は `usb_wired`・`usb_descriptors` に閉じ込める。
 | `usb_hid.c` | 有線応答組立（`80 xx`→`81`・`0x01`→`0x21`・`0x30`。BTstack 非依存） |
 | `usb_wired.c` | 有線状態機・TinyUSB 送受信・診断計数 |
 | `usb_descriptors.c` | USB 記述子（VID/PID/文字列/HID、純正値の写し） |
+| `usb_cdc.c` | USB CDC コンソールの TinyUSB 接着部（`tusb.h` を外に出さない） |
+| `ui_line.c` | 発信元タグ付き行組立（`ui_src_t`・`ui_line_acc_t`・`W` ゲート述語） |
 | `tusb_config.h` | TinyUSB 設定（HID のみ） |
 
 `probe_*` グローバルは所有モジュールが分散している（`hid`＝入力・送信状態、
@@ -68,6 +70,7 @@ $ninja = Join-Path $env:USERPROFILE '.pico-sdk/ninja/v1.13.2/ninja.exe'
   `hid.c`・`spi.c` のバイト値は実機仕様の写し。
 * USB 記述子（VID/PID/文字列/HID）は純正値の写しで変えない。`81`・`0x21` 応答は
   64B 固定。`usb ...` 行は付加のみで、`st` 行の書式は変えない。
+* CDC の Endpoint は通知 `0x83`・OUT `0x02`・IN `0x82`（HID の `0x81`/`0x01` と衝突させない）。新規リテラルは `W from UART only` のみ。
 * 秘密（LTK/IRK/AES 鍵）をログに出さない。
 
 ## Flash 保存内容

@@ -126,6 +126,21 @@ Pico の USB ポートをドックの USB ポートに接続します。`?` の 
 - `W 0` に戻すと数秒で無線が再接続します。繋がらない場合は `K` と Switch 側の
   登録解除から繋ぎ直してください
 
+### 5. PC の USB シリアルで操作する（無線時のみ）
+
+無線モード（`W 0`）では、Pico の USB ポートを PC に接続すると COM ポートが
+出ます（USB CDC）。UART アダプタなしで同じコマンドを使えます。`?` の `usb` 行
+が `cdc=1` になれば接続完了です。出力は UART と USB の両方に送られます。
+
+補足事項：
+
+- `W` コマンドは UART からのみ受け付けます。USB CDC から送ると
+  `W from UART only` が返り、モードは変わりません
+- 無線モードのまま Switch ドックに接続しても、Pro Controller としては
+  認識されません（想定内の動作です。有線で使うときは `W 1` にしてから
+  接続してください）
+- 有線モード（`W 1`）では COM ポートは出ません（純粋 HID のみ）
+
 ## コマンド一覧
 
 | 入力 | 機能 |
@@ -263,6 +278,8 @@ $ninja = Join-Path $env:USERPROFILE '.pico-sdk/ninja/v1.13.2/ninja.exe'
 | `usb_hid.c` | 有線応答組立（Pico・BTstack 非依存、ホストテスト可） |
 | `usb_wired.c` | 有線状態機・入出力・診断計数（TinyUSB） |
 | `usb_descriptors.c` | USB 記述子（VID/PID/文字列/HID、純正値の写し） |
+| `usb_cdc.c` | USB CDC コンソールの TinyUSB 接着部（`ui.c` は `usb_cdc.h` 経由でのみ使う） |
+| `ui_line.c` | 発信元タグ付き行組立（UART・CDC 共用、Pico・BTstack 非依存） |
 | `tusb_config.h` | TinyUSB 設定（HID のみ） |
 | `switch_hid.h` | HID 記述子・VID/PID/COD |
 | `btstack_config.h` | BTstack 設定 |
