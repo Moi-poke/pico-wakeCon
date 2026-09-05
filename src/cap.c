@@ -3,23 +3,13 @@
 #include <string.h>
 
 #include "cap.h"
+#include "util.h"
 
 void cap_table_init(cap_table_t *table)
 {
     if (table != NULL) {
         memset(table, 0, sizeof(*table));
     }
-}
-
-static bool all_zero(const uint8_t *data, size_t length)
-{
-    size_t i;
-    for (i = 0u; i < length; i++) {
-        if (data[i] != 0u) {
-            return false;
-        }
-    }
-    return true;
 }
 
 bool cap_parse(const uint8_t *adv, uint8_t adv_len, cap_hit_t *hit)
@@ -119,7 +109,7 @@ int cap_best_wake(const cap_table_t *table)
         if (!table->slot[i].has_wake) {
             continue;
         }
-        if (all_zero(table->slot[i].wake.switch_mac, 6)) {
+        if (util_is_zero(table->slot[i].wake.switch_mac, 6)) {
             continue;
         }
         if (best < 0 || table->slot[i].rssi > table->slot[best].rssi) {
@@ -128,13 +118,12 @@ int cap_best_wake(const cap_table_t *table)
     }
     return best;
 }
-
 bool cap_encode(const cap_saved_t *saved, uint8_t *blob)
 {
     if (saved == NULL || blob == NULL) {
         return false;
     }
-    if (all_zero(saved->spoof, 6)) {
+    if (util_is_zero(saved->spoof, 6)) {
         return false;
     }
     memset(blob, 0, CAP_BLOB_SIZE);
@@ -159,7 +148,7 @@ bool cap_decode(const uint8_t *blob, uint32_t length, cap_saved_t *saved)
     saved->spoof_type = blob[6];
     memcpy(saved->switch_mac, &blob[7], 6);
     memcpy(saved->payload, &blob[13], CAP_ADV_SIZE);
-    if (all_zero(saved->spoof, 6)) {
+    if (util_is_zero(saved->spoof, 6)) {
         return false;
     }
     if (saved->payload[16] != CAP_TYPE_WAKE) {

@@ -10,12 +10,17 @@
 #define TAG_COLOR 0x4E58434Cu /* 'NXCL' */
 #define TAG_CAP 0x57435031u   /* 'WCP1' */
 
+static bool get_tlv(const btstack_tlv_t **t, void **c)
+{
+    btstack_tlv_get_instance(t, c);
+    return *t != NULL;
+}
+
 void store_host(bd_addr_t addr)
 {
     const btstack_tlv_t *tlv = NULL;
     void *ctx = NULL;
-    btstack_tlv_get_instance(&tlv, &ctx);
-    if (tlv == NULL) {
+    if (!get_tlv(&tlv, &ctx)) {
         return;
     }
     tlv->store_tag(ctx, TAG_HOST, addr, 6);
@@ -27,8 +32,7 @@ bool store_host_load(void)
 {
     const btstack_tlv_t *tlv = NULL;
     void *ctx = NULL;
-    btstack_tlv_get_instance(&tlv, &ctx);
-    if (tlv == NULL) {
+    if (!get_tlv(&tlv, &ctx)) {
         return false;
     }
     if (tlv->get_tag(ctx, TAG_HOST, probe_host_addr, 6) != 6) {
@@ -42,8 +46,7 @@ void store_color(void)
 {
     const btstack_tlv_t *tlv = NULL;
     void *ctx = NULL;
-    btstack_tlv_get_instance(&tlv, &ctx);
-    if (tlv == NULL) {
+    if (!get_tlv(&tlv, &ctx)) {
         return;
     }
     tlv->store_tag(ctx, TAG_COLOR, spi_color_6050, 13);
@@ -54,8 +57,7 @@ void store_color_load(void)
     const btstack_tlv_t *tlv = NULL;
     void *ctx = NULL;
     uint8_t buf[13];
-    btstack_tlv_get_instance(&tlv, &ctx);
-    if (tlv == NULL) {
+    if (!get_tlv(&tlv, &ctx)) {
         return;
     }
     if (tlv->get_tag(ctx, TAG_COLOR, buf, 13) != 13) {
@@ -69,8 +71,7 @@ bool store_cap_save(void)
     const btstack_tlv_t *tlv = NULL;
     void *ctx = NULL;
     uint8_t blob[CAP_BLOB_SIZE];
-    btstack_tlv_get_instance(&tlv, &ctx);
-    if (tlv == NULL) {
+    if (!get_tlv(&tlv, &ctx)) {
         return false;
     }
     if (!cap_encode(&probe_cap_saved, blob)) {
@@ -91,8 +92,7 @@ bool store_cap_load(void)
     void *ctx = NULL;
     uint8_t blob[CAP_BLOB_SIZE];
     uint32_t got;
-    btstack_tlv_get_instance(&tlv, &ctx);
-    if (tlv == NULL) {
+    if (!get_tlv(&tlv, &ctx)) {
         return false;
     }
     memset(blob, 0, sizeof(blob));
@@ -110,8 +110,7 @@ void store_cap_forget(void)
 {
     const btstack_tlv_t *tlv = NULL;
     void *ctx = NULL;
-    btstack_tlv_get_instance(&tlv, &ctx);
-    if (tlv == NULL) {
+    if (!get_tlv(&tlv, &ctx)) {
         return;
     }
     tlv->delete_tag(ctx, TAG_CAP);

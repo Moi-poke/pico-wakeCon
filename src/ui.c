@@ -15,6 +15,7 @@
 #include "spi.h"
 #include "store.h"
 #include "ui.h"
+#include "util.h"
 
 #define UART_ID uart0
 #define LINE_MAX 64
@@ -52,10 +53,184 @@ static int read_one_char(void)
     return -1;
 }
 
+static void cmd_s(void)
+{
+    if (probe_parse_s_line(line_buf, line_len)) {
+        probe_s_line_ok++;
+        probe_request_send();
+    } else {
+        probe_s_line_ng++;
+    }
+}
+
+static void cmd_n(void)
+{
+    probe_input_reset();
+    probe_n_line_ok++;
+    probe_request_send();
+}
+
+static void cmd_o(void)
+{
+    /* 色。C とは別の命令: O <本体> <ボタン> <左> <右>。
+     * 先頭1字は読飛ばす。応答は4色すべて返す。
+     * PC 側は "color " 接頭で成功を判定する。 */
+    char m[112];
+    if (probe_parse_color_line(line_buf, line_len)) {
+        store_color();
+        util_format_color(m, sizeof(m));
+        probe_line(m);
+    } else {
+        probe_line("usage: O <body> <btn> <left> <right> (hex)");
+    }
+}
+
+static void cmd_c(void)
+{
+    /* C [秒]。取込。 */
+    unsigned long seconds = 15u;
+    if (line_len > 1) {
+        int p = 1;
+        seconds = 0u;
+        while (p < line_len && line_buf[p] == ' ') {
+            p++;
+        }
+        if (p >= line_len) {
+            probe_s_line_ng++;
+            return;
+        }
+        while (p < line_len && line_buf[p] >= '0' &&
+               line_buf[p] <= '9') {
+            seconds = seconds * 10u +
+                (unsigned long)(line_buf[p] - '0');
+            p++;
+        }
+        if (p != line_len || seconds < 1u || seconds > 60u) {
+            probe_s_line_ng++;
+            return;
+        }
+    }
+    if (link_cap_start((uint8_t)seconds)) {
+        /* 開始行は link 側が出す。 */
+    }
+}
+
+static void cmd_l(void)
+{
+    char m[112];
+    uint8_t i;
+    uint8_t n = link_cap_used();
+    for (i = 0u; i < n; i++) {
+        const cap_entry_t *e = link_cap_entry(i);
+        if (e == NULL) {
+            continue;
+        }
+        snprintf(m, sizeof(m),
+                 "list %u mac=%02x%02x%02x%02x%02x%02x pid=%04x wake=%u rssi=%d n=%lu",
+                 (unsigned)i,
+                 e->addr[0], e->addr[1], e->addr[2],
+                 e->addr[3], e->addr[4], e->addr[5],
+                 (unsigned)e->wake.pid, e->has_wake ? 1u : 0u,
+                 e->rssi, (unsigned long)e->sightings);
+        probe_line(m);
+    }
+    if (probe_cap_valid) {
+        snprintf(m, sizeof(m),
+                 "saved spoof=%02x%02x%02x%02x%02x%02x sw=%02x%02x%02x%02x%02x%02x",
+                 probe_cap_saved.spoof[0], probe_cap_saved.spoof[1],
+                 probe_cap_saved.spoof[2], probe_cap_saved.spoof[3],
+                 probe_cap_saved.spoof[4], probe_cap_saved.spoof[5],
+                 probe_cap_saved.switch_mac[0],
+                 probe_cap_saved.switch_mac[1],
+                 probe_cap_saved.switch_mac[2],
+                 probe_cap_saved.switch_mac[3],
+                 probe_cap_saved.switch_mac[4],
+                 probe_cap_saved.switch_mac[5]);
+    } else {
+        snprintf(m, sizeof(m), "saved none");
+    }
+    probe_line(m);
+}
+
+static void cmd_b(void)
+{
+    link_beacon_start();
+}
+
+static void cmd_x(void)
+{
+    if (probe_scanning || probe_beacon) {
+        probe_line("X ERR BUSY");
+        return;
+    }
+    link_cap_clear();
+}
+
+static void cmd_status(void)
+{
+    probe_show_status();
+}
+
+static void cmd_d(void)
+{
+    probe_hci_verbose = !probe_hci_verbose;
+    probe_line(probe_hci_verbose ? "hci verbose on" : "hci verbose off");
+}
+
+static void cmd_m(void)
+{
+    probe_monitor = !probe_monitor;
+    probe_line(probe_monitor ? "monitor on" : "monitor off");
+}
+
+static void cmd_k(void)
+{
+    gap_delete_all_link_keys();
+    probe_line("link keys deleted. unpair on Switch too");
+}
+
+static void cmd_p(void)
+{
+    probe_line("PONG");
+}
+
+typedef void (*ui_cmd_fn)(void);
+typedef struct {
+    char c;
+    ui_cmd_fn fn;
+} ui_cmd_t;
+
+static const ui_cmd_t UI_CMDS[] = {
+    { 'S', cmd_s },
+    { 'N', cmd_n },
+    { 'O', cmd_o },
+    { 'C', cmd_c },
+    { 'L', cmd_l },
+    { 'B', cmd_b },
+    { 'X', cmd_x },
+    { '?', cmd_status },
+    { 'D', cmd_d },
+    { 'M', cmd_m },
+    { 'K', cmd_k },
+    { 'P', cmd_p },
+    { 'p', cmd_p },
+};
+
+static bool ui_cmd_is_known(char c)
+{
+    unsigned i;
+    for (i = 0u; i < sizeof(UI_CMDS) / sizeof(UI_CMDS[0]); i++) {
+        if (UI_CMDS[i].c == c) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void handle_line(void)
 {
     char c0;
-    char m[112];
+    unsigned i;
     if (line_len <= 0) {
         return;
     }
@@ -63,138 +238,11 @@ static void handle_line(void)
     probe_watchdog_feed(to_ms_since_boot(get_absolute_time()));
     line_buf[line_len] = '\0';
     c0 = line_buf[0];
-    if (c0 == 'S') {
-        if (probe_parse_s_line(line_buf, line_len)) {
-            probe_s_line_ok++;
-            probe_request_send();
-        } else {
-            probe_s_line_ng++;
-        }
-        return;
-    }
-    if (c0 == 'N') {
-        probe_input_reset();
-        probe_n_line_ok++;
-        probe_request_send();
-        return;
-    }
-    if (c0 == 'O') {
-        /* 色。C とは別の命令: O <本体> <ボタン> <左> <右>。
-         * 先頭1字は読飛ばす。応答は4色すべて返す。
-         * PC 側は "color " 接頭で成功を判定する。 */
-        if (probe_parse_color_line(line_buf, line_len)) {
-            store_color();
-            snprintf(m, sizeof(m),
-                     "color body=%02x%02x%02x btn=%02x%02x%02x"
-                     " left=%02x%02x%02x right=%02x%02x%02x",
-                     spi_color_6050[0], spi_color_6050[1], spi_color_6050[2],
-                     spi_color_6050[3], spi_color_6050[4], spi_color_6050[5],
-                     spi_color_6050[6], spi_color_6050[7], spi_color_6050[8],
-                     spi_color_6050[9], spi_color_6050[10], spi_color_6050[11]);
-            probe_line(m);
-        } else {
-            probe_line("usage: O <body> <btn> <left> <right> (hex)");
-        }
-        return;
-    }
-    if (c0 == 'C') {
-        /* C [秒]。取込。 */
-        unsigned long seconds = 15u;
-        if (line_len > 1) {
-            int p = 1;
-            seconds = 0u;
-            while (p < line_len && line_buf[p] == ' ') {
-                p++;
-            }
-            if (p >= line_len) {
-                probe_s_line_ng++;
-                return;
-            }
-            while (p < line_len && line_buf[p] >= '0' &&
-                   line_buf[p] <= '9') {
-                seconds = seconds * 10u +
-                    (unsigned long)(line_buf[p] - '0');
-                p++;
-            }
-            if (p != line_len || seconds < 1u || seconds > 60u) {
-                probe_s_line_ng++;
-                return;
-            }
-        }
-        if (link_cap_start((uint8_t)seconds)) {
-            /* 開始行は link 側が出す。 */
-        }
-        return;
-    }
-    if (c0 == 'L') {
-        uint8_t i;
-        uint8_t n = link_cap_used();
-        for (i = 0u; i < n; i++) {
-            const cap_entry_t *e = link_cap_entry(i);
-            if (e == NULL) {
-                continue;
-            }
-            snprintf(m, sizeof(m),
-                     "list %u mac=%02x%02x%02x%02x%02x%02x pid=%04x wake=%u rssi=%d n=%lu",
-                     (unsigned)i,
-                     e->addr[0], e->addr[1], e->addr[2],
-                     e->addr[3], e->addr[4], e->addr[5],
-                     (unsigned)e->wake.pid, e->has_wake ? 1u : 0u,
-                     e->rssi, (unsigned long)e->sightings);
-            probe_line(m);
-        }
-        if (probe_cap_valid) {
-            snprintf(m, sizeof(m),
-                     "saved spoof=%02x%02x%02x%02x%02x%02x sw=%02x%02x%02x%02x%02x%02x",
-                     probe_cap_saved.spoof[0], probe_cap_saved.spoof[1],
-                     probe_cap_saved.spoof[2], probe_cap_saved.spoof[3],
-                     probe_cap_saved.spoof[4], probe_cap_saved.spoof[5],
-                     probe_cap_saved.switch_mac[0],
-                     probe_cap_saved.switch_mac[1],
-                     probe_cap_saved.switch_mac[2],
-                     probe_cap_saved.switch_mac[3],
-                     probe_cap_saved.switch_mac[4],
-                     probe_cap_saved.switch_mac[5]);
-        } else {
-            snprintf(m, sizeof(m), "saved none");
-        }
-        probe_line(m);
-        return;
-    }
-    if (c0 == 'B') {
-        link_beacon_start();
-        return;
-    }
-    if (c0 == 'X') {
-        if (probe_scanning || probe_beacon) {
-            probe_line("X ERR BUSY");
+    for (i = 0u; i < sizeof(UI_CMDS) / sizeof(UI_CMDS[0]); i++) {
+        if (UI_CMDS[i].c == c0) {
+            UI_CMDS[i].fn();
             return;
         }
-        link_cap_clear();
-        return;
-    }
-    if (c0 == '?') {
-        probe_show_status();
-        return;
-    }
-    if (c0 == 'D') {
-        probe_hci_verbose = !probe_hci_verbose;
-        probe_line(probe_hci_verbose ? "hci verbose on" : "hci verbose off");
-        return;
-    }
-    if (c0 == 'M') {
-        probe_monitor = !probe_monitor;
-        probe_line(probe_monitor ? "monitor on" : "monitor off");
-        return;
-    }
-    if (c0 == 'K') {
-        gap_delete_all_link_keys();
-        probe_line("link keys deleted. unpair on Switch too");
-        return;
-    }
-    if (c0 == 'P' || c0 == 'p') {
-        probe_line("PONG");
-        return;
     }
     probe_s_line_ng++;
 }
@@ -216,10 +264,7 @@ void probe_uart_task(void)
             line_len = 0;
             continue;
         }
-        if (line_len == 0 && c != 'S' && c != 'N' && c != 'O' &&
-            c != 'C' && c != 'L' && c != 'B' && c != '?' && c != 'X' &&
-            c != 'D' && c != 'M' && c != 'K' &&
-            c != 'P' && c != 'p') {
+        if (line_len == 0 && !ui_cmd_is_known(c)) {
             continue;
         }
         line_buf[line_len++] = c;
@@ -241,13 +286,7 @@ void probe_show_status(void)
     probe_line(m);
     /* 現在の本体色。O で変えた内容が残っているかここで確かめられる。
      * 形式は O の応答と同じ "color " 接頭にする。 */
-    snprintf(m, sizeof(m),
-             "color body=%02x%02x%02x btn=%02x%02x%02x"
-             " left=%02x%02x%02x right=%02x%02x%02x",
-             spi_color_6050[0], spi_color_6050[1], spi_color_6050[2],
-             spi_color_6050[3], spi_color_6050[4], spi_color_6050[5],
-             spi_color_6050[6], spi_color_6050[7], spi_color_6050[8],
-             spi_color_6050[9], spi_color_6050[10], spi_color_6050[11]);
+    util_format_color(m, sizeof(m));
     probe_line(m);
     if (probe_cap_valid) {
         snprintf(m, sizeof(m),

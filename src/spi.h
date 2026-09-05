@@ -18,7 +18,7 @@ typedef struct {
 } spi_entry_t;
 
 extern const spi_entry_t SPI_TABLE[];
-extern uint8_t SPI_TABLE_N;
+extern const uint8_t SPI_TABLE_N;
 extern uint8_t spi_color_6050[13];  /* 本体/Btn/L/R + 不明1B。C…O 行で書換 */
 
 const spi_entry_t *spi_find(uint16_t addr);

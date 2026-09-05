@@ -40,13 +40,14 @@ int link_key_count(void);
 /* 取込。LE 接続中・Classic 接続中は不可。 */
 bool link_cap_start(uint8_t seconds);
 void link_cap_report(const uint8_t *packet);
-void link_cap_poll(uint32_t now_ms);
+void link_cap_tick(uint32_t now_ms);
 uint8_t link_cap_used(void);
 const cap_entry_t *link_cap_entry(uint8_t i);
 void link_cap_clear(void);
 
 /* 再生。保存済み必須。1.5 秒出して元に戻す。 */
 bool link_beacon_start(void);
+void link_beacon_tick(uint32_t now_ms);
 void link_poll(uint32_t now_ms);  /* 取込期限・再生期限の番 */
 
 /* LE 接続の追跡(再生中の接続切り用)。 */

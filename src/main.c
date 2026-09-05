@@ -24,6 +24,13 @@
 #define HEARTBEAT_MS 1000
 #define UART_POLL_MS 10
 
+/* HCI event code names (BTstack/BT spec values, renamed for readability). */
+#define HCI_EV_SSP_BEGIN 0x31u
+#define HCI_EV_SSP_END 0x36u
+#define HCI_EV_CONN_REQUEST 0x05u
+#define HCI_EV_CONN_COMPLETE 0x03u
+#define HCI_EV_BDADDR_RSP 0x0eu
+
 static uint8_t hid_service_buffer[700];
 static uint8_t pnp_service_buffer[200];
 
@@ -49,10 +56,165 @@ static void empty_timer_handler(btstack_timer_source_t *ts)
     btstack_run_loop_add_timer(ts);
 }
 
+/* HCI verbose log + BDADDR応答表示。書式は従来通り。 */
+static void log_hci_packet(uint8_t ev, uint8_t *packet, uint16_t size)
+{
+    char msg[96];
+    bool want = probe_hci_verbose;
+    if (!want && probe_empty_sent == 0u && probe_state_sent == 0u) {
+        want = true;
+    }
+    if (!want && (ev == HCI_EV_CONN_REQUEST || ev == 0x18u)) {
+        want = true;
+    }
+    if (!want && ev >= HCI_EV_SSP_BEGIN && ev <= HCI_EV_SSP_END) {
+        want = true;
+    }
+    /* Read BD ADDR 応答は常時出す。MAC 偽装の成否はここで見る。 */
+    if (ev == HCI_EV_BDADDR_RSP && size >= 12u && packet[3] == 0x01u &&
+        packet[4] == 0x09u && packet[5] == 0x10u) {
+        snprintf(msg, sizeof(msg),
+                 "BDADDR=%02x%02x%02x%02x%02x%02x",
+                 packet[11], packet[10], packet[9],
+                 packet[8], packet[7], packet[6]);
+        probe_line(msg);
+    }
+    if (want) {
+        snprintf(msg, sizeof(msg),
+                 "[HCI] ev=0x%02x len=%u data=%02x %02x %02x %02x",
+                 ev, packet[1], packet[2], packet[3], packet[4],
+                 packet[5]);
+        probe_line(msg);
+    }
+}
+
+static void handle_bt_ready(uint8_t *packet)
+{
+    char msg[96];
+    bd_addr_t addr;
+    (void)packet;
+    if (btstack_event_state_get_state(packet) != HCI_STATE_WORKING) {
+        return;
+    }
+    gap_local_bd_addr(addr);
+    snprintf(msg, sizeof(msg), "BT READY %s", bd_addr_to_str(addr));
+    probe_line(msg);
+    if (addr[0] == SWITCH_OUI_0 && addr[1] == SWITCH_OUI_1 &&
+        addr[2] == SWITCH_OUI_2) {
+        probe_line("addr ok (7C:BB:8A)");
+    } else {
+        probe_line("addr NG (SDK default remains)");
+    }
+    snprintf(msg, sizeof(msg), "link keys=%d",
+             link_key_count());
+    probe_line(msg);
+    store_color_load();
+    if (store_host_load()) {
+        snprintf(msg, sizeof(msg), "reconnect to %s",
+                 bd_addr_to_str(probe_host_addr));
+        probe_line(msg);
+        btstack_run_loop_set_timer(&reconnect_timer, 2000);
+        btstack_run_loop_add_timer(&reconnect_timer);
+    } else {
+        probe_line("no host. open Change-Grip screen on Switch");
+    }
+    if (store_cap_load()) {
+        probe_line("cap saved. B to wake");
+    } else {
+        probe_line("cap none. C to capture Joy-Con wake");
+    }
+}
+
+static void handle_conn_complete(uint8_t *packet)
+{
+    char msg[96];
+    uint8_t cst = hci_event_connection_complete_get_status(packet);
+    snprintf(msg, sizeof(msg), "conn status=0x%02x%s", cst,
+             (cst == ERROR_CODE_SUCCESS) ? " ok" : " FAIL");
+    probe_line(msg);
+    if (cst == 0x04u) {
+        probe_line("0x04=Page Timeout (peer silent)");
+    }
+    if (cst != ERROR_CODE_SUCCESS) {
+        return;
+    }
+    probe_connected_at_ms = to_ms_since_boot(get_absolute_time());
+    probe_ssp_count = 0u;
+}
+
+static void handle_disc(uint8_t *packet)
+{
+    char msg[96];
+    uint8_t reason =
+        hci_event_disconnection_complete_get_reason(packet);
+    uint32_t held_ms = to_ms_since_boot(get_absolute_time()) -
+        probe_connected_at_ms;
+    snprintf(msg, sizeof(msg), "disc reason=0x%02x held=%lums",
+             reason, (unsigned long)held_ms);
+    probe_line(msg);
+    if (reason == 0x05u && probe_ssp_count == 0u &&
+        held_ms < 200u) {
+        probe_line("console stall (no SSP). power OFF Switch, or K + re-pair");
+    } else if (probe_ssp_count > 0u) {
+        snprintf(msg, sizeof(msg), "ssp=%u ok. check our code",
+                 probe_ssp_count);
+        probe_line(msg);
+    }
+    probe_hid_cid = 0u;
+    link_note_disconnected();
+    probe_line("reconnect armed");
+}
+
+static void handle_hid_meta(uint8_t *packet)
+{
+    char msg[96];
+    uint8_t sub = hci_event_hid_meta_get_subevent_code(packet);
+    switch (sub) {
+        case HID_SUBEVENT_CONNECTION_OPENED: {
+            uint8_t st =
+                hid_subevent_connection_opened_get_status(packet);
+            if (st != ERROR_CODE_SUCCESS) {
+                snprintf(msg, sizeof(msg),
+                         "hid open FAIL status=0x%02x", st);
+                probe_line(msg);
+                if (st == 0x66u) {
+                    probe_line("0x66=refused security. K + re-pair both");
+                }
+                probe_hid_cid = 0u;
+                link_note_disconnected();
+                break;
+            }
+            probe_hid_cid =
+                hid_subevent_connection_opened_get_hid_cid(packet);
+            probe_hid_reset();
+            {
+                bd_addr_t a;
+                hid_subevent_connection_opened_get_bd_addr(packet, a);
+                store_host(a);
+                snprintf(msg, sizeof(msg), "hid open. host %s saved",
+                         bd_addr_to_str(a));
+                probe_line(msg);
+            }
+            link_mark_connected();
+            break;
+        }
+        case HID_SUBEVENT_CONNECTION_CLOSED:
+            probe_hid_cid = 0u;
+            link_note_disconnected();
+            probe_line("hid closed");
+            break;
+        case HID_SUBEVENT_CAN_SEND_NOW:
+            probe_can_send_now();
+            break;
+        default:
+            snprintf(msg, sizeof(msg), "hid sub=0x%02x", sub);
+            probe_line(msg);
+            break;
+    }
+}
 static void packet_handler(uint8_t packet_type, uint16_t channel,
                            uint8_t *packet, uint16_t size)
 {
-    char msg[96];
     uint8_t ev;
     (void)channel;
     (void)size;
@@ -66,162 +228,29 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
         return;
     }
     link_le_packet(packet_type, packet, size);
-    if (ev == 0x31u || ev == 0x32u || ev == 0x33u || ev == 0x36u) {
+    if (ev == HCI_EV_SSP_BEGIN || ev == 0x32u || ev == 0x33u || ev == HCI_EV_SSP_END) {
         if (probe_ssp_count < 255u) {
             probe_ssp_count++;
         }
     }
-    {
-        bool want = probe_hci_verbose;
-        if (!want && probe_empty_sent == 0u && probe_state_sent == 0u) {
-            want = true;
-        }
-        if (!want && (ev == 0x05u || ev == 0x18u)) {
-            want = true;
-        }
-        if (!want && ev >= 0x31u && ev <= 0x36u) {
-            want = true;
-        }
-        /* Read BD ADDR 応答は常時出す。MAC 偽装の成否はここで見る。 */
-        if (ev == 0x0eu && size >= 12u && packet[3] == 0x01u &&
-            packet[4] == 0x09u && packet[5] == 0x10u) {
-            snprintf(msg, sizeof(msg),
-                     "BDADDR=%02x%02x%02x%02x%02x%02x",
-                     packet[11], packet[10], packet[9],
-                     packet[8], packet[7], packet[6]);
-            probe_line(msg);
-        }
-        if (want) {
-            snprintf(msg, sizeof(msg),
-                     "[HCI] ev=0x%02x len=%u data=%02x %02x %02x %02x",
-                     ev, packet[1], packet[2], packet[3], packet[4],
-                     packet[5]);
-            probe_line(msg);
-        }
-    }
+    log_hci_packet(ev, packet, size);
 
     switch (ev) {
-        case BTSTACK_EVENT_STATE: {
-            bd_addr_t addr;
-            if (btstack_event_state_get_state(packet) != HCI_STATE_WORKING) {
-                break;
-            }
-            gap_local_bd_addr(addr);
-            snprintf(msg, sizeof(msg), "BT READY %s", bd_addr_to_str(addr));
-            probe_line(msg);
-            if (addr[0] == SWITCH_OUI_0 && addr[1] == SWITCH_OUI_1 &&
-                addr[2] == SWITCH_OUI_2) {
-                probe_line("addr ok (7C:BB:8A)");
-            } else {
-                probe_line("addr NG (SDK default remains)");
-            }
-            snprintf(msg, sizeof(msg), "link keys=%d",
-                     link_key_count());
-            probe_line(msg);
-            store_color_load();
-            if (store_host_load()) {
-                snprintf(msg, sizeof(msg), "reconnect to %s",
-                         bd_addr_to_str(probe_host_addr));
-                probe_line(msg);
-                btstack_run_loop_set_timer(&reconnect_timer, 2000);
-                btstack_run_loop_add_timer(&reconnect_timer);
-            } else {
-                probe_line("no host. open Change-Grip screen on Switch");
-            }
-            if (store_cap_load()) {
-                probe_line("cap saved. B to wake");
-            } else {
-                probe_line("cap none. C to capture Joy-Con wake");
-            }
+        case BTSTACK_EVENT_STATE:
+            handle_bt_ready(packet);
             break;
-        }
         case HCI_EVENT_CONNECTION_REQUEST:
             probe_line("conn request (Switch found us)");
             break;
-        case HCI_EVENT_CONNECTION_COMPLETE: {
-            uint8_t cst = hci_event_connection_complete_get_status(packet);
-            snprintf(msg, sizeof(msg), "conn status=0x%02x%s", cst,
-                     (cst == ERROR_CODE_SUCCESS) ? " ok" : " FAIL");
-            probe_line(msg);
-            if (cst == 0x04u) {
-                probe_line("0x04=Page Timeout (peer silent)");
-            }
-            if (cst != ERROR_CODE_SUCCESS) {
-                break;
-            }
-            probe_connected_at_ms = to_ms_since_boot(get_absolute_time());
-            probe_ssp_count = 0u;
+        case HCI_EVENT_CONNECTION_COMPLETE:
+            handle_conn_complete(packet);
             break;
-        }
-        case HCI_EVENT_DISCONNECTION_COMPLETE: {
-            uint8_t reason =
-                hci_event_disconnection_complete_get_reason(packet);
-            {
-                uint32_t held_ms = to_ms_since_boot(get_absolute_time()) -
-                    probe_connected_at_ms;
-                snprintf(msg, sizeof(msg), "disc reason=0x%02x held=%lums",
-                         reason, (unsigned long)held_ms);
-                probe_line(msg);
-                if (reason == 0x05u && probe_ssp_count == 0u &&
-                    held_ms < 200u) {
-                    probe_line("console stall (no SSP). power OFF Switch, or K + re-pair");
-                } else if (probe_ssp_count > 0u) {
-                    snprintf(msg, sizeof(msg), "ssp=%u ok. check our code",
-                             probe_ssp_count);
-                    probe_line(msg);
-                }
-                probe_hid_cid = 0u;
-                link_note_disconnected();
-                probe_line("reconnect armed");
-            }
+        case HCI_EVENT_DISCONNECTION_COMPLETE:
+            handle_disc(packet);
             break;
-        }
-        case HCI_EVENT_HID_META: {
-            uint8_t sub = hci_event_hid_meta_get_subevent_code(packet);
-            switch (sub) {
-                case HID_SUBEVENT_CONNECTION_OPENED: {
-                    uint8_t st =
-                        hid_subevent_connection_opened_get_status(packet);
-                    if (st != ERROR_CODE_SUCCESS) {
-                        snprintf(msg, sizeof(msg),
-                                 "hid open FAIL status=0x%02x", st);
-                        probe_line(msg);
-                        if (st == 0x66u) {
-                            probe_line("0x66=refused security. K + re-pair both");
-                        }
-                        probe_hid_cid = 0u;
-                        link_note_disconnected();
-                        break;
-                    }
-                    probe_hid_cid =
-                        hid_subevent_connection_opened_get_hid_cid(packet);
-                    probe_hid_reset();
-                    {
-                        bd_addr_t a;
-                        hid_subevent_connection_opened_get_bd_addr(packet, a);
-                        store_host(a);
-                        snprintf(msg, sizeof(msg), "hid open. host %s saved",
-                                 bd_addr_to_str(a));
-                        probe_line(msg);
-                    }
-                    link_mark_connected();
-                    break;
-                }
-                case HID_SUBEVENT_CONNECTION_CLOSED:
-                    probe_hid_cid = 0u;
-                    link_note_disconnected();
-                    probe_line("hid closed");
-                    break;
-                case HID_SUBEVENT_CAN_SEND_NOW:
-                    probe_can_send_now();
-                    break;
-                default:
-                    snprintf(msg, sizeof(msg), "hid sub=0x%02x", sub);
-                    probe_line(msg);
-                    break;
-            }
+        case HCI_EVENT_HID_META:
+            handle_hid_meta(packet);
             break;
-        }
         case GAP_EVENT_ADVERTISING_REPORT:
             if (packet_type == HCI_EVENT_PACKET) {
                 link_cap_report(packet);

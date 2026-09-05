@@ -11,6 +11,9 @@
 #include "link.h"
 #include "store.h"
 #include "ui.h"
+#include "util.h"
+
+#define HID_REPLY_WANT (2u + 48u)
 
 /* ---- 入力状態 ---- */
 uint8_t probe_btn[3];
@@ -205,31 +208,6 @@ void probe_can_send_now(void)
 #define PC_HOME    0x1000u
 #define PC_CAPTURE 0x2000u
 
-static int parse_hex_one(const char *s, int len, uint32_t *out)
-{
-    uint32_t v = 0u;
-    int k;
-    if (len <= 0 || len > 8) {
-        return 0;
-    }
-    for (k = 0; k < len; k++) {
-        char c = s[k];
-        uint32_t d;
-        if (c >= '0' && c <= '9') {
-            d = (uint32_t)(c - '0');
-        } else if (c >= 'a' && c <= 'f') {
-            d = (uint32_t)(c - 'a' + 10);
-        } else if (c >= 'A' && c <= 'F') {
-            d = (uint32_t)(c - 'A' + 10);
-        } else {
-            return 0;
-        }
-        v = (v << 4) | d;
-    }
-    *out = v;
-    return 1;
-}
-
 static void pc_buttons_to_bt(uint16_t pc, uint8_t out[3])
 {
     out[0] = 0u;
@@ -299,24 +277,8 @@ static uint8_t hat_to_bt(uint8_t hat)
 int probe_parse_s_line(const char *s, int len)
 {
     uint32_t v[6];
-    int idx = 0;
-    int p = 1;
-    while (idx < 6) {
-        int start;
-        while (p < len && s[p] == ' ') {
-            p++;
-        }
-        start = p;
-        while (p < len && s[p] != ' ') {
-            p++;
-        }
-        if (p == start) {
-            return 0;
-        }
-        if (!parse_hex_one(&s[start], p - start, &v[idx])) {
-            return 0;
-        }
-        idx++;
+    if (!util_split_tokens(s, len, 1, v, 6)) {
+        return 0;
     }
     pc_buttons_to_bt((uint16_t)v[0], probe_btn);
     probe_btn[2] |= hat_to_bt((uint8_t)v[1]);
@@ -338,25 +300,9 @@ int probe_parse_s_line(const char *s, int len)
 int probe_parse_color_line(const char *s, int len)
 {
     uint32_t v[4];
-    int idx = 0;
-    int p = 1;
     int k;
-    while (idx < 4) {
-        int start;
-        while (p < len && s[p] == ' ') {
-            p++;
-        }
-        start = p;
-        while (p < len && s[p] != ' ') {
-            p++;
-        }
-        if (p == start) {
-            return 0;
-        }
-        if (!parse_hex_one(&s[start], p - start, &v[idx])) {
-            return 0;
-        }
-        idx++;
+    if (!util_split_tokens(s, len, 1, v, 4)) {
+        return 0;
     }
     for (k = 0; k < 4; k++) {
         spi_color_6050[k * 3 + 0] = (uint8_t)((v[k] >> 16) & 0xFFu);
@@ -386,11 +332,86 @@ static void note_subcmd(uint8_t sub)
 
 /* ack 上位ニブルは中身の予告: 80 無し / 82 機器 / 83 トリガ / 90 SPI /
  * 81 ペア / B0 灯 / C0 IMU / D0 電圧。実物(GP2040)通り。 */
-static void answer_subcmd(uint8_t sub, const uint8_t *report, int report_size)
+
+/* 機器情報: fw 03 8B(実測値) / 種別 03(Pro) / 自アドレス。 */
+static void reply_device_info(uint16_t *p)
+{
+    int k;
+    *p = probe_build_reply(0x82u, 0x02u);
+    reply_buf[(*p)++] = 0x03u;
+    reply_buf[(*p)++] = 0x8Bu;
+    reply_buf[(*p)++] = 0x03u;
+    reply_buf[(*p)++] = 0x02u;
+    for (k = 0; k < 6; k++) {
+        reply_buf[(*p)++] = probe_addr[k];
+    }
+    reply_buf[(*p)++] = 0x01u;
+    reply_buf[(*p)++] = 0x02u;  /* 0x601B と同義: グリップ色まで使う */
+}
+
+/* 電源指示: 00 寝ろ / 01 再接続 / 02 ペア / 04 再接続(HOME)。 */
+static void reply_power(const uint8_t *report, int report_size)
 {
     char msg[96];
+    const char *what;
+    if (report_size > 10) {
+        probe_hci_state_arg = report[10];
+    }
+    probe_hci_state_count++;
+    if (probe_hci_state_arg == 0x00u) {
+        what = "sleep";
+    } else if (probe_hci_state_arg == 0x01u) {
+        what = "reconnect";
+    } else if (probe_hci_state_arg == 0x02u) {
+        what = "pair";
+    } else if (probe_hci_state_arg == 0x04u) {
+        what = "reconnect(HOME)";
+    } else {
+        what = "unknown";
+    }
+    snprintf(msg, sizeof(msg), "  0x06 power=0x%02x (%s)",
+             (unsigned)probe_hci_state_arg, what);
+    probe_line(msg);
+    reply_len = probe_build_reply(0x80u, 0x06u);
+}
+
+static void reply_spi(const uint8_t *report, int report_size)
+{
+    char msg[96];
+    uint16_t addr;
+    uint8_t want;
+    const spi_entry_t *hit;
     uint16_t p;
-    int k;
+    if (report_size < 15) {
+        reply_len = 0u;
+        return;
+    }
+    addr = (uint16_t)report[10] | ((uint16_t)report[11] << 8);
+    want = report[14];
+    hit = spi_find(addr);
+    if (hit == NULL || want > hit->size) {
+        /* 未知・不足は答えない。でたらめ校正値は渡さない。 */
+        snprintf(msg, sizeof(msg),
+                 "  SPI unknown addr=0x%04x size=%u (no reply)",
+                 (unsigned)addr, (unsigned)want);
+        probe_line(msg);
+        reply_len = 0u;
+        return;
+    }
+    p = probe_build_reply(0x90u, 0x10u);
+    reply_buf[p++] = (uint8_t)(addr & 0xFFu);
+    reply_buf[p++] = (uint8_t)(addr >> 8);
+    reply_buf[p++] = 0x00u;
+    reply_buf[p++] = 0x00u;
+    reply_buf[p++] = want;
+    memcpy(&reply_buf[p], hit->data, want);
+    p = (uint16_t)(p + want);
+    reply_len = p;
+}
+
+static void answer_subcmd(uint8_t sub, const uint8_t *report, int report_size)
+{
+    uint16_t p;
     switch (sub) {
         case 0x00:
             p = probe_build_reply(0x80u, 0x00u);
@@ -403,17 +424,7 @@ static void answer_subcmd(uint8_t sub, const uint8_t *report, int report_size)
             reply_len = p;
             break;
         case 0x02:
-            /* 機器情報: fw 03 8B(実測値) / 種別 03(Pro) / 自アドレス。 */
-            p = probe_build_reply(0x82u, 0x02u);
-            reply_buf[p++] = 0x03u;
-            reply_buf[p++] = 0x8Bu;
-            reply_buf[p++] = 0x03u;
-            reply_buf[p++] = 0x02u;
-            for (k = 0; k < 6; k++) {
-                reply_buf[p++] = probe_addr[k];
-            }
-            reply_buf[p++] = 0x01u;
-            reply_buf[p++] = 0x02u;  /* 0x601B と同義: グリップ色まで使う */
+            reply_device_info(&p);
             reply_len = p;
             break;
         case 0x03:
@@ -438,61 +449,12 @@ static void answer_subcmd(uint8_t sub, const uint8_t *report, int report_size)
             reply_buf[p++] = probe_host_known ? 0x01u : 0x00u;
             reply_len = p;
             break;
-        case 0x06: {
-            /* 電源指示: 00 寝ろ / 01 再接続 / 02 ペア / 04 再接続(HOME)。 */
-            const char *what;
-            if (report_size > 10) {
-                probe_hci_state_arg = report[10];
-            }
-            probe_hci_state_count++;
-            if (probe_hci_state_arg == 0x00u) {
-                what = "sleep";
-            } else if (probe_hci_state_arg == 0x01u) {
-                what = "reconnect";
-            } else if (probe_hci_state_arg == 0x02u) {
-                what = "pair";
-            } else if (probe_hci_state_arg == 0x04u) {
-                what = "reconnect(HOME)";
-            } else {
-                what = "unknown";
-            }
-            snprintf(msg, sizeof(msg), "  0x06 power=0x%02x (%s)",
-                     (unsigned)probe_hci_state_arg, what);
-            probe_line(msg);
-            reply_len = probe_build_reply(0x80u, 0x06u);
+        case 0x06:
+            reply_power(report, report_size);
             break;
-        }
-        case 0x10: {
-            uint16_t addr;
-            uint8_t want;
-            const spi_entry_t *hit;
-            if (report_size < 15) {
-                reply_len = 0u;
-                break;
-            }
-            addr = (uint16_t)report[10] | ((uint16_t)report[11] << 8);
-            want = report[14];
-            hit = spi_find(addr);
-            if (hit == NULL || want > hit->size) {
-                /* 未知・不足は答えない。でたらめ校正値は渡さない。 */
-                snprintf(msg, sizeof(msg),
-                         "  SPI unknown addr=0x%04x size=%u (no reply)",
-                         (unsigned)addr, (unsigned)want);
-                probe_line(msg);
-                reply_len = 0u;
-                break;
-            }
-            p = probe_build_reply(0x90u, 0x10u);
-            reply_buf[p++] = (uint8_t)(addr & 0xFFu);
-            reply_buf[p++] = (uint8_t)(addr >> 8);
-            reply_buf[p++] = 0x00u;
-            reply_buf[p++] = 0x00u;
-            reply_buf[p++] = want;
-            memcpy(&reply_buf[p], hit->data, want);
-            p = (uint16_t)(p + want);
-            reply_len = p;
+        case 0x10:
+            reply_spi(report, report_size);
             break;
-        }
         case 0x21:
             p = probe_build_reply(0x80u, 0x21u);
             memset(&reply_buf[p], 0, 34);
@@ -582,10 +544,9 @@ void probe_report_handler(uint16_t cid, hid_report_type_t report_type,
         answer_subcmd(sub, report, report_size);
         /* A1+ID+本体48=50B へ 0 埋めで揃える。 */
         if (reply_len > 0u) {
-            const uint16_t want = 2u + 48u;
-            if (reply_len < want) {
-                memset(&reply_buf[reply_len], 0, want - reply_len);
-                reply_len = want;
+            if (reply_len < HID_REPLY_WANT) {
+                memset(&reply_buf[reply_len], 0, HID_REPLY_WANT - reply_len);
+                reply_len = HID_REPLY_WANT;
             }
             if (reply_len > REPLY_MAX) {
                 reply_len = REPLY_MAX;

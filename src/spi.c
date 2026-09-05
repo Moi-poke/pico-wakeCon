@@ -55,7 +55,7 @@ const spi_entry_t SPI_TABLE[] = {
     { 0x8028, 24, SPI_FF   },
 };
 
-uint8_t SPI_TABLE_N =
+uint8_t const SPI_TABLE_N =
     (uint8_t)(sizeof(SPI_TABLE) / sizeof(SPI_TABLE[0]));
 
 const spi_entry_t *spi_find(uint16_t addr)

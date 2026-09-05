@@ -34,7 +34,11 @@ add_executable(pico-wakecon
     src/hid.c
     src/store.c
     src/link.c
+    src/link_conn.c
+    src/link_cap.c
+    src/link_beacon.c
     src/ui.c
+    src/util.c
 )
 
 pico_set_program_name(pico-wakecon "pico-wakecon")
