@@ -6,7 +6,6 @@
 #include <string.h>
 
 #include "pico/stdio.h"
-#include "pico/error.h"
 #include "pico/time.h"
 #include "hardware/uart.h"
 #include "cap.h"
@@ -40,16 +39,13 @@ void probe_line(const char *text)
 static char line_buf[LINE_MAX];
 static int line_len;
 
+/* コマンド入力は UART0 (GP0/GP1) 直結のみ。USB CDC は存在しない
+ * (pico_enable_stdio_usb=0、記述子も HID のみ) ため、
+ * W 変更を含む全コマンドは UART 側からしか届かない。構造で保証する。 */
 static int read_one_char(void)
 {
     if (uart_is_readable(UART_ID)) {
         return (int)(unsigned char)uart_getc(UART_ID);
-    }
-    {
-        int ch = getchar_timeout_us(0);
-        if (ch != PICO_ERROR_TIMEOUT) {
-            return ch;
-        }
     }
     return -1;
 }
