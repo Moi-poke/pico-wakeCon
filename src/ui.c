@@ -81,6 +81,11 @@ static void cmd_o(void)
         store_color();
         util_format_color(m, sizeof(m));
         probe_line(m);
+        /* 有線中は挿し直し相当に戻して読み直させる。
+         * 色の読出は接続時1回きりのため。 */
+        if (usb_wired_is_enabled()) {
+            usb_wired_reconnect();
+        }
     } else {
         probe_line("usage: O <body> <btn> <left> <right> (hex)");
     }

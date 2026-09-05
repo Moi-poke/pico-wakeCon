@@ -19,6 +19,8 @@ void usb_wired_pump(void);
 /* ホストに再列挙させる (pull-up の off/on)。W 1 直後や C/B 終了後の回復用。
  * 未接続でも無害。run loop 上で呼ぶ (約50ms 止まる)。 */
 void usb_wired_reconnect(void);
+/* USB デバイスを外す (W 0 での二重認識防止)。給電は続く。 */
+void usb_wired_disconnect(void);
 void usb_wired_set_enabled(bool en);
 bool usb_wired_is_enabled(void);
 bool usb_wired_is_configured(void);

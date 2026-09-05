@@ -107,6 +107,11 @@ void link_radio_update(void)
     if (want_on != bt_powered) {
         hci_power_control(want_on ? HCI_POWER_ON : HCI_POWER_OFF);
         bt_powered = want_on;
+        if (want_on) {
+            /* 電源再投入で transport の MAC が既定に戻るため掛け直す。
+             * 掛けないと別機器扱い (88:A2:9E...) になり再接続できない。 */
+            hci_set_bd_addr(probe_addr);
+        }
     }
     gap_connectable_control(quiet ? 0u : 1u);
     gap_discoverable_control(quiet ? 0u : 1u);
@@ -126,6 +131,9 @@ void link_apply_wired_mode(bool wired)
         if (probe_hid_cid != 0u) {
             hid_device_disconnect(probe_hid_cid);
         }
+    } else {
+        /* 無線に戻すときは USB 側を外す。黙ったまま残すと二重認識になる。 */
+        usb_wired_disconnect();
     }
     /* Switch からの呼び直し (着信 page) 対策と電波停止は update に集約。
      * LE 広告・スキャンの要否は update が見る。 */

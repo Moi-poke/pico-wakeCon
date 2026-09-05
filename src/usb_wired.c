@@ -113,6 +113,11 @@ void usb_wired_reconnect(void)
     tud_connect();
 }
 
+void usb_wired_disconnect(void)
+{
+    tud_disconnect();
+}
+
 /* 応答の遅延送出用 (2wiCC 方式)。コールバック内では積むだけにし、
  * 送信はタスク側で行う。コールバック内送信は control 転送の完了と
  * 競合しうるため。単一スロット (ホストは stop-and-wait のため十分)。 */
