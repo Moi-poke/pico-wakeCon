@@ -25,6 +25,7 @@
 #include "pico/unique_id.h"
 
 #include "mode.h"
+#include "type.h"
 
 /* hid.c が持つ S 行の PC 側値。hid.h は btstack.h を引くため、
  * 同じ TU では TinyUSB の同名型と衝突する。値の型だけ要るので
@@ -33,9 +34,12 @@ extern uint16_t probe_pc_buttons;
 extern uint8_t probe_pc_hat;
 extern uint8_t probe_pc_lx, probe_pc_ly, probe_pc_rx, probe_pc_ry;
 
-/* HORI POKKEN TOURNAMENT DX と同じ名乗り。 */
+/* HORI POKKEN TOURNAMENT DX と同じ名乗り（Pro 用）。
+ * Joy-Con は任天堂の VID と左右の PID で名乗る。 */
 #define WIRE_VID 0x0F0Du
 #define WIRE_PID 0x0092u
+
+#define NINTENDO_VID 0x057Eu
 
 #define CDC_VID 0x2E8Au
 #define CDC_PID 0x000Au
@@ -140,8 +144,8 @@ uint8_t const *tud_descriptor_device_cb(void)
         .bDeviceSubClass = 0x00,
         .bDeviceProtocol = 0x00,
         .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
-        .idVendor = WIRE_VID,
-        .idProduct = WIRE_PID,
+        .idVendor = 0,
+        .idProduct = 0,
         .bcdDevice = 0x0100,
         .iManufacturer = 0x01,
         .iProduct = 0x02,
@@ -149,6 +153,16 @@ uint8_t const *tud_descriptor_device_cb(void)
         .iSerialNumber = 0x00,
         .bNumConfigurations = 0x01,
     };
+    /* 種類で名乗りを変える。起動後に列挙するため起動時の種類で固定。 */
+    if (desc_wired.idVendor == 0u) {
+        if (type_is_pro()) {
+            desc_wired.idVendor = WIRE_VID;
+            desc_wired.idProduct = WIRE_PID;
+        } else {
+            desc_wired.idVendor = NINTENDO_VID;
+            desc_wired.idProduct = type_product_id();
+        }
+    }
     return (uint8_t const *)(mode_is_wired() ? &desc_wired : &desc_wireless);
 }
 
@@ -206,9 +220,9 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
     }
     if (mode_is_wired()) {
         if (index == 1) {
-            text = "HORI CO.,LTD.";
+            text = type_is_pro() ? "HORI CO.,LTD." : "Nintendo";
         } else if (index == 2) {
-            text = "POKKEN CONTROLLER";
+            text = type_is_pro() ? "POKKEN CONTROLLER" : type_gap_name();
         }
     } else {
         if (index == 1) {

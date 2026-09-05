@@ -10,6 +10,7 @@
 #include "spi.h"
 #include "link.h"
 #include "store.h"
+#include "type.h"
 #include "ui.h"
 
 /* ---- 入力状態 ---- */
@@ -148,13 +149,14 @@ uint32_t probe_send_interval_ms(void)
 }
 
 /* 応答の共通部 16B を作り、中身の書込位置を返す。
- * [3] 以降は 0x30 と同じ「今の姿勢」を載せる（固定値にしない）。 */
+ * [3] 以降は 0x30 と同じ「今の姿勢」を載せる（固定値にしない）。
+ * [3] は電池＋接続情報。電池は満杯(8)固定。接続は Pro=0 Joy-Con=3。 */
 uint16_t probe_build_reply(uint8_t ack, uint8_t subcmd)
 {
     reply_buf[0] = 0xA1u;
     reply_buf[1] = 0x21u;
     reply_buf[2] = probe_report_timer++;
-    reply_buf[3] = 0x80u;
+    reply_buf[3] = type_is_pro() ? 0x80u : 0x86u;
     reply_buf[4] = probe_btn[0];
     reply_buf[5] = probe_btn[1];
     reply_buf[6] = probe_btn[2];
@@ -179,7 +181,7 @@ void probe_can_send_now(void)
         f[0] = 0xA1u;
         f[1] = 0x30u;
         f[2] = probe_report_timer++;
-        f[3] = 0x80u;
+        f[3] = type_is_pro() ? 0x80u : 0x86u;
         f[4] = probe_btn[0];
         f[5] = probe_btn[1];
         f[6] = probe_btn[2];
@@ -217,6 +219,8 @@ void probe_can_send_now(void)
 #define PC_RCLICK  0x0800u
 #define PC_HOME    0x1000u
 #define PC_CAPTURE 0x2000u
+#define PC_SL      0x4000u
+#define PC_SR      0x8000u
 
 static int parse_hex_one(const char *s, int len, uint32_t *out)
 {
@@ -292,7 +296,24 @@ static void pc_buttons_to_bt(uint16_t pc, uint8_t out[3])
     }
 }
 
-/* hat 0-7 → byte5 ビット。8 は中立。斜めは 2 ビット。 */
+/* hat 0-7 → 方向ボタンのビット。8 は中立。Joy-Con (L) 用。
+ * 十字キーが無いため、hat を上下左右の押下へ直す。 */
+static uint8_t hat_to_dpad(uint8_t hat)
+{
+    switch (hat) {
+        case 0: return 0x02u;
+        case 1: return 0x02u | 0x04u;
+        case 2: return 0x04u;
+        case 3: return 0x04u | 0x01u;
+        case 4: return 0x01u;
+        case 5: return 0x01u | 0x08u;
+        case 6: return 0x08u;
+        case 7: return 0x08u | 0x02u;
+        default: return 0u;
+    }
+}
+
+/* hat 0-7 → Pro 側 byte5 ビット。8 は中立。斜めは 2 ビット。 */
 static uint8_t hat_to_bt(uint8_t hat)
 {
     switch (hat) {
@@ -337,6 +358,42 @@ int probe_parse_s_line(const char *s, int len)
     probe_ly = (uint8_t)v[3];
     probe_rx = (uint8_t)v[4];
     probe_ry = (uint8_t)v[5];
+    if (!type_is_pro()) {
+        /* Joy-Con は片側だけ使う。使わない側と共有の不要分を落とす。
+         * SL/SR は種類の側へ入れる。Pro には無いため他では無視する。
+         * JCL に十字キーは無いため、hat は方向ボタンへ直す。
+         * 使わない側のスティックは中立に固定する。 */
+        uint16_t pc = (uint16_t)v[0];
+        if (type_is_jcl()) {
+            probe_btn[0] = 0u;
+            /* 共有バイトに残すのは Minus / L押込 / Capture だけ。
+             * ここは BT 側のビット（PC 側の値ではない）。 */
+            probe_btn[1] &= (uint8_t)(0x01u | 0x08u | 0x20u);
+            probe_btn[2] &= (uint8_t)~0x0Fu;
+            probe_btn[2] |= hat_to_dpad((uint8_t)v[1] > 8u ? 8u
+                                                          : (uint8_t)v[1]);
+            if (pc & PC_SL) {
+                probe_btn[2] |= 0x10u;
+            }
+            if (pc & PC_SR) {
+                probe_btn[2] |= 0x20u;
+            }
+            probe_rx = 0x80u;
+            probe_ry = 0x80u;
+        } else {
+            probe_btn[2] = 0u;
+            /* 共有バイトに残すのは Plus / R押込 / Home だけ。 */
+            probe_btn[1] &= (uint8_t)(0x02u | 0x04u | 0x10u);
+            if (pc & PC_SL) {
+                probe_btn[0] |= 0x10u;
+            }
+            if (pc & PC_SR) {
+                probe_btn[0] |= 0x20u;
+            }
+            probe_lx = 0x80u;
+            probe_ly = 0x80u;
+        }
+    }
     probe_pc_buttons = (uint16_t)v[0];
     probe_pc_hat = (uint8_t)v[1] > 8u ? 8u : (uint8_t)v[1];
     probe_pc_lx = (uint8_t)v[2];
@@ -422,11 +479,11 @@ static void answer_subcmd(uint8_t sub, const uint8_t *report, int report_size)
             reply_len = p;
             break;
         case 0x02:
-            /* 機器情報: fw 03 8B(実測値) / 種別 03(Pro) / 自アドレス。 */
+            /* 機器情報: fw / 種別(1=L 2=R 3=Pro) / 自アドレス。 */
             p = probe_build_reply(0x82u, 0x02u);
             reply_buf[p++] = 0x03u;
             reply_buf[p++] = 0x8Bu;
-            reply_buf[p++] = 0x03u;
+            reply_buf[p++] = type_device_byte();
             reply_buf[p++] = 0x02u;
             for (k = 0; k < 6; k++) {
                 reply_buf[p++] = probe_addr[k];

@@ -36,6 +36,7 @@ add_executable(pico-wakecon
     src/link.c
     src/ui.c
     src/mode.c
+    src/type.c
     src/wire.c
 )
 

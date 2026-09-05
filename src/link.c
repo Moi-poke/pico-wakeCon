@@ -1,4 +1,5 @@
 /* 自アドレス 7C:BB:8A＋基板固有3B。電源で変わると覚え直しになるため固定。
+ * 種類ごとに末尾をずらす。同じ MAC で種類を変えるとペア情報が混ざる。
  * 再生時は Joy-Con MAC へ一時偽装し、必ず元に戻す(Classic の身元の保全)。 */
 
 #include <stdio.h>
@@ -11,6 +12,7 @@
 #include "link.h"
 #include "store.h"
 #include "switch_hid.h"
+#include "type.h"
 #include "ui.h"
 
 bd_addr_t probe_addr;
@@ -24,7 +26,8 @@ void link_init(void)
     probe_addr[2] = SWITCH_OUI_2;
     probe_addr[3] = id.id[PICO_UNIQUE_BOARD_ID_SIZE_BYTES - 3];
     probe_addr[4] = id.id[PICO_UNIQUE_BOARD_ID_SIZE_BYTES - 2];
-    probe_addr[5] = id.id[PICO_UNIQUE_BOARD_ID_SIZE_BYTES - 1];
+    probe_addr[5] = (uint8_t)(id.id[PICO_UNIQUE_BOARD_ID_SIZE_BYTES - 1] +
+                              type_get());
 }
 
 bd_addr_t probe_host_addr;
