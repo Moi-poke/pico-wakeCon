@@ -279,3 +279,60 @@ Step 2 (Switch ドック接続時の要求順序の観測。アナライザ / Be
 - `80 05` が来る条件、`80 91/92` の有無を記録する。
 
 Go 条件: `80 02/03/04` (+ `01`) の往復が再現性あり、Input ID/サイズ特定。No-Go 時は案B (HORI 型標準 HID) へ切替をユーザに相談。推測実装はしない。
+
+## Task 6 ハード申送り
+
+本タスク (Task 6) はビルドのみで、実機への書き込み・通電確認は未実施である。以下は人手による実機確認の申送りチェックリストである。測定値はすべて記録し、推測で埋めないこと。
+
+### 0. 前提 (機械確認済み)
+
+- ホストテスト全 PASS (`util` / `cap` / `usb`)。増分 `build` + クリーン `build-verify` 成功 (`pico-wakecon.elf` / `pico-wakecon.uf2` 生成)。
+- ログ書式 diff: 既存 `snprintf` / `probe_line` の変更なし。新規リテラルは `usb en=%u cfg=%u hs=%u` と `usage: W [0|1]` のみ。
+- `src/hid.c` は `main` からの diff なし。`main()` 初期化順不変。
+
+### 1. 書き込み + PC 列挙 (R-T1-2 の解消)
+
+1. `build/pico-wakecon.uf2` (または `build-verify` のもの) を Pico 2 W に書き込む。
+2. PC の USB に挿し、OS の USB 記述子ビューアで確認する:
+   - `idVendor=0x057E` / `idProduct=0x2009`、`bcdUSB=2.00`、`bMaxPacketSize0=64`。
+   - 文字列 `Nintendo Co., Ltd` / `Pro Controller` / `000000000001`。
+   - Configuration 一式 `wTotalLength=41`、HID 記述子 `wDescriptorLength=203` (Report Descriptor 全 203B を Spike T1 表と照合)。
+   - Endpoint IN `0x81` / OUT `0x01`、各 `wMaxPacketSize=64`、`bInterval=8`。
+3. `bcdDevice` を記録する (ToadKing `0x0200` / retro-pico-switch `0x0210` の不一致を実機値で解消。R-T1-2)。
+
+### 2. UART と W コマンド (Task 5 report §5 の通り)
+
+- PC ↔ Pico は UART0 (GP0/GP1、115200bps) で見る。USB CDC は出ない (正常)。
+1. 起動後に既存の起動行が出ること。
+2. `?` → 既存 3 行 (`st ...` / `color ...` / `saved ...`) がバイト一致 + 末尾に `usb en=0 cfg=0 hs=0` (未接続・無線既定)。
+3. `W` → `usb en=0 cfg=0 hs=0`、状態変化なし。
+4. `W 2` / `W x` / `W 1x` → `usage: W [0|1]`、状態変化なし (前後で `W` を打ち再確認)。
+5. `W 1` → `usb en=1 ...`。未接続中は `reconnect try` が出なくなること。
+6. `W 0` → `usb en=0 ...`、5 秒以内に再接続ループ復帰 (`reconnect try` 再開)。
+
+### 3. Switch ドック有線 (R-T1-1・Input 暫定値の解消)
+
+1. `W 1` の状態で Switch ドックの USB に接続する。
+2. Pro Controller として認識されること。`cfg=1`、ハンドシェイク完了で `hs=1` を確認する。
+3. 以下を全バイト記録する (推測禁止):
+   - `80 01` への応答全 10B (Pro Controller の type 値 + MAC 格納順)。
+   - `80 04` / `80 05` / `80 06` への応答の有無・全バイト・長さ (R-T1-1 の解消)。
+   - Input レポートの Report ID / サイズ / 周期 / 配置 (Input 暫定値の解消。暫定実装は周期 8ms 要求・実効 10ms 量子化のため、実測周期を記録)。
+   - GET_REPORT の有無。
+4. `80 04` 前は入力が流れないこと。`80 04` 後に操作が反映されること。抜挿で再接続すること。`80 04` 後に BT へ復帰しないこと。
+
+### 4. W-while-connected の決定 (実装しない・観測のみ)
+
+- Classic 接続中に `W 1` した場合、現実装は切断しない (Touch Nothing Else)。Switch 側が二重認識 (dual-transport) するか、片方を優先するかを観測して記録する。
+- 自動切断の要否はこの観測をもって別途判断する。本チェックでは実装変更しない。
+
+### 5. Switch 2・WD・W 0 復帰
+
+1. Switch 2 でも認識されること (有線プロトコル同一の想定。実測で確認)。
+2. 有線中の `WD` 中立化: 200ms 放置で入力が中立化すること。
+3. `W 0` 復帰ケイデンス: 長時間有線の後の `W 0` で `reconnect try` が 5 秒周期で再開するか観測する (giveup-decay 凍結のため 1 周期遅延の可能性あり。異常ではなく記録対象)。
+
+### 6. T1 Go/No-Go 判定枠
+
+- Go (次タスクで暫定値を確定): `80 02/03/04` (+ `01`) の往復が再現性あり、Input ID/サイズ特定。上記 1・3 の記録が埋まったら、暫定値 (周期・`bcdDevice`・`81 04/05/06` 応答) を実測値で固定化するフォローアップを行う。
+- No-Go (案B 協議): 往復が再現しない・Input 特定不可の場合は HORI 型標準 HID (案B) への切替を相談する。推測実装はしない。
