@@ -124,24 +124,30 @@ void usb_wired_reconnect(void)
     tud_connect();
 }
 
-/* 81 応答の遅延送出用 (2wiCC 方式)。コールバック内では積むだけにし、
+/* 応答の遅延送出用 (2wiCC 方式)。コールバック内では積むだけにし、
  * 送信はタスク側で行う。コールバック内送信は control 転送の完了と
  * 競合しうるため。単一スロット (ホストは stop-and-wait のため十分)。 */
-static uint8_t pend81[64];
-static bool pend81_valid;
+static uint8_t pend_resp[64];
+static uint8_t pend_resp_id;
+static bool pend_resp_valid;
+static uint8_t usb_player;
 
 void usb_wired_task(uint32_t now_ms)
 {
     uint8_t report[USB_WIRED_INPUT_LEN];
     tud_task();
-    /* 保留中の 81 応答を先に送る (2wiCC の special first 相当)。
+    /* 保留中の応答を先に送る (2wiCC の special first 相当)。
      * 送れなければ次 tick に持ち越す。 */
-    if (pend81_valid) {
+    if (pend_resp_valid) {
         if (tud_hid_ready() &&
-            tud_hid_report(USB_WIRED_REPORT_ID_REPLY, &pend81[1],
-                           (uint16_t)(sizeof(pend81) - 1u))) {
-            pend81_valid = false;
-            wired_stats.tx81++;
+            tud_hid_report(pend_resp_id, &pend_resp[1],
+                           (uint16_t)(sizeof(pend_resp) - 1u))) {
+            pend_resp_valid = false;
+            if (pend_resp_id == USB_WIRED_REPORT_ID_REPLY) {
+                wired_stats.tx81++;
+            } else {
+                wired_stats.tx21++;
+            }
         }
         return;
     }
@@ -202,36 +208,80 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
         memcpy(req, buffer, bufsize);
         req_len = bufsize;
     }
-    if (req_len < 2u || req[0] != 0x80u) {
+    if (req_len < 2u) {
         return;
     }
-    sub = req[1];
-    wired_stats.rx80++;
-    wired_stats.last80 = sub;
-    wired_stats.hist[0] = wired_stats.hist[1];
-    wired_stats.hist[1] = wired_stats.hist[2];
-    wired_stats.hist[2] = wired_stats.hist[3];
-    wired_stats.hist[3] = sub;
-    /* W 0 中のホスト雑音で handshake を立てない (応答自体は返す)。 */
-    if (wired_enabled && sub == 0x04u) {
-        handshake_done = true;
-    } else if (wired_enabled && sub == 0x05u) {
-        handshake_done = false;
-    }
-    /* 81 01 応答の MAC は設計メモの逆順格納に従う。
+    /* 81 01 / 0x21 応答の MAC は設計メモの逆順格納に従う。
      * bd_addr_to_str が配列順表示のため反転して渡す。 */
     for (i = 0; i < 6u; i++) {
         mac_rev[i] = probe_addr[5u - i];
     }
-    /* 応答は積むだけにする。送信は usb_wired_task 側で行う
-     * (2wiCC の special first 相当)。コールバック内送信は
-     * control 転送の完了と競合しうるため。 */
-    n = usb_build_81_reply(req, (int)req_len, pend81, (int)sizeof(pend81),
-                           mac_rev, USB_WIRED_PROVISIONAL_DEV_TYPE);
-    if (n <= 0) {
-        return; /* 不正入力のみ送らない。応答は常に 64B (ID+63)。 */
+    if (req[0] == 0x80u) {
+        sub = req[1];
+        wired_stats.rx80++;
+        wired_stats.last80 = sub;
+        wired_stats.hist[0] = wired_stats.hist[1];
+        wired_stats.hist[1] = wired_stats.hist[2];
+        wired_stats.hist[2] = wired_stats.hist[3];
+        wired_stats.hist[3] = sub;
+        /* W 0 中のホスト雑音で handshake を立てない (応答自体は返す)。 */
+        if (wired_enabled && sub == 0x04u) {
+            handshake_done = true;
+        } else if (wired_enabled && sub == 0x05u) {
+            handshake_done = false;
+        }
+        /* 応答は積むだけにする。送信は usb_wired_task 側で行う。 */
+        n = usb_build_81_reply(req, (int)req_len, pend_resp,
+                               (int)sizeof(pend_resp), mac_rev,
+                               USB_WIRED_PROVISIONAL_DEV_TYPE);
+        if (n <= 0) {
+            return; /* 不正入力のみ送らない。応答は常に 64B (ID+63)。 */
+        }
+        pend_resp_id = USB_WIRED_REPORT_ID_REPLY;
+        pend_resp_valid = true;
+    } else if (req[0] == 0x01u) {
+        /* 0x01 サブコマンド (2wiCC 通り)。0x10 は振動のみで無応答。 */
+        usb_sub_ctx_t ctx;
+        if (req_len < 11) {
+            return;
+        }
+        sub = req[10];
+        wired_stats.hist01[0] = wired_stats.hist01[1];
+        wired_stats.hist01[1] = wired_stats.hist01[2];
+        wired_stats.hist01[2] = wired_stats.hist01[3];
+        wired_stats.hist01[3] = sub;
+        if (sub == 0x10u) {
+            return;
+        }
+        /* 0x03 mode 0x30 も full 開始合図にする (BT の full 化と同義)。
+         * 80 04 が来ないホストへの備え。W 0 中は立てない。 */
+        if (wired_enabled && sub == 0x03u && req_len >= 12 &&
+            req[11] == 0x30u) {
+            handshake_done = true;
+        }
+        if (sub == 0x30u && req_len >= 12) {
+            usb_player = req[11];
+        }
+        ctx.btn[0] = probe_btn[0];
+        ctx.btn[1] = probe_btn[1];
+        ctx.btn[2] = probe_btn[2];
+        ctx.lx = probe_lx;
+        ctx.ly = probe_ly;
+        ctx.rx = probe_rx;
+        ctx.ry = probe_ry;
+        ctx.timer =
+            (uint8_t)(to_ms_since_boot(get_absolute_time()) >> 5);
+        memcpy(ctx.mac, mac_rev, 6);
+        ctx.player = usb_player;
+        n = usb_build_21_reply(req, (int)req_len, pend_resp,
+                               (int)sizeof(pend_resp), &ctx);
+        if (n <= 0) {
+            return;
+        }
+        pend_resp_id = 0x21u;
+        pend_resp_valid = true;
     }
-    pend81_valid = true;
+    /* 0x10 等のその他は応答なし。 */
 }
 
 /* 装着で計数。tud_mounted() が立つ直前の bus reset/configure 由来。 */

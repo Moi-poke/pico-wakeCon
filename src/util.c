@@ -82,6 +82,18 @@ int util_split_tokens(const char *s, int len, int start, uint32_t *v, int want)
     return 1;
 }
 
+void util_pack_stick_12bit(uint8_t x8, uint8_t y8, uint8_t *out)
+{
+    uint16_t x = (uint16_t)x8 << 4;
+    uint16_t y = (uint16_t)4096 - ((uint16_t)y8 << 4);
+    if (y > 4095u) {
+        y = 4095u;
+    }
+    out[0] = (uint8_t)(x & 0xFFu);
+    out[1] = (uint8_t)(((x >> 8) & 0x0Fu) | ((y & 0x0Fu) << 4));
+    out[2] = (uint8_t)((y >> 4) & 0xFFu);
+}
+
 /* O応答と状態表示で重複していた色フォーマット。書式は従来通り。 */
 void util_format_color(char *m, size_t n)
 {
