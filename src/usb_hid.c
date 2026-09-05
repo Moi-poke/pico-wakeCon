@@ -166,7 +166,10 @@ int usb_build_21_reply(const uint8_t *req, int req_len, uint8_t *out,
             out[18] = 0x02u;
             memcpy(&out[19], ctx->mac, 6);
             out[25] = 0x01u;
-            out[26] = 0x01u;
+            /* 末尾は BT 応答と同値の 0x02 にする。0x01 では Switch が
+             * SPI 色を使わない (有線の色が反映されない実測)。
+             * 無線 (hid.c reply_device_info) の実働値に合わせる。 */
+            out[26] = 0x02u;
             return 64;
         case 0x03u:
             out[13] = 0x80u;

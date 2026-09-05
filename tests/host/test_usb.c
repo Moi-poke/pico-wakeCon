@@ -112,7 +112,7 @@ int main(void)
         CHECK(out[15] == 0x03u && out[16] == 0x48u);
         CHECK(out[17] == 0x03u && out[18] == 0x02u);
         CHECK(memcmp(&out[19], mac, 6) == 0);
-        CHECK(out[25] == 0x01u && out[26] == 0x01u);
+        CHECK(out[25] == 0x01u && out[26] == 0x02u);
         for (i = 27; i < 64; i++) {
             CHECK(out[i] == 0u);
         }
