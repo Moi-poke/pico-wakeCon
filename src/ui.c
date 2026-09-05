@@ -231,9 +231,10 @@ static void cmd_w(void)
         probe_line("usage: W [0|1]");
         return;
     }
-    /* Classic 接続中でも切断はしない (Touch Nothing Else)。
-     * 再接続抑止のみ link 側で行う。 */
+    /* Classic 側の始末 (接続中なら能動切断＋待ち受け停止) も link 側で行う。
+     * 発信抑止だけでは Switch からの呼び直しを受けて再接続するため。 */
     usb_wired_set_enabled(v == 1u);
+    link_apply_wired_mode(v == 1u);
     report_usb_line();
 }
 

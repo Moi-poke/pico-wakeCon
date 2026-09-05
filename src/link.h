@@ -35,6 +35,9 @@ void link_init(void);
 void link_reconnect_handler(btstack_timer_source_t *ts);
 void link_note_disconnected(void);
 void link_mark_connected(void);
+/* 有線/無線の切替に伴う Classic 側の始末。wired=true で接続中なら能動切断し
+ * 待ち受けも止める (着信再接続の防止)。false で待ち受けに戻す。 */
+void link_apply_wired_mode(bool wired);
 int link_key_count(void);
 
 /* 取込。LE 接続中・Classic 接続中は不可。 */
