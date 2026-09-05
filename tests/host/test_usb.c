@@ -164,6 +164,27 @@ int main(void)
             CHECK(n == 64 && out[19] == 24u);
             CHECK(out[25] == 0x01u && out[27] == 0x40u);
         }
+        /* 0x01 BT ペアリング: ack 81 + 種別雛形。type 1 は自 MAC ASCII。 */
+        {
+            uint8_t p1[12] = {0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0x01};
+            uint8_t p2[12] = {0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0x02};
+            uint8_t p3[12] = {0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0x03};
+            uint8_t p0[11] = {0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01};
+            n = usb_build_21_reply(p1, 12, out, sizeof(out), &ctx);
+            CHECK(n == 64 && out[13] == 0x81u && out[14] == 0x01u);
+            CHECK(out[15] == 0x01u);
+            CHECK(memcmp(&out[16], "7CBB8A112233", 12) == 0);
+            for (i = 46; i < 64; i++) {
+                CHECK(out[i] == 0u);
+            }
+            n = usb_build_21_reply(p2, 12, out, sizeof(out), &ctx);
+            CHECK(n == 64 && out[15] == 0x02u && out[16] == 0xe5u);
+            n = usb_build_21_reply(p3, 12, out, sizeof(out), &ctx);
+            CHECK(n == 64 && out[15] == 0x03u && out[16] == 0x00u);
+            /* 種別バイトなしは type 3 扱い。 */
+            n = usb_build_21_reply(p0, 11, out, sizeof(out), &ctx);
+            CHECK(n == 64 && out[15] == 0x03u);
+        }
         /* 不正は 0。範囲外 SPI・短い要求・短い out・NULL・非 0x01。 */
         CHECK(usb_build_21_reply(q10unk, 16, out, sizeof(out), &ctx) == 0);
         CHECK(usb_build_21_reply(q10, 15, out, sizeof(out), &ctx) == 0);

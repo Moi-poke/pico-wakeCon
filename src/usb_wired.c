@@ -240,6 +240,9 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
         uint8_t k;
         bool seen = false;
         sub = req[10];
+        if (req_len >= 12) {
+            wired_stats.subd = req[11];
+        }
         wired_stats.hist01[0] = wired_stats.hist01[1];
         wired_stats.hist01[1] = wired_stats.hist01[2];
         wired_stats.hist01[2] = wired_stats.hist01[3];

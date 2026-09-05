@@ -202,7 +202,7 @@ static void report_usb_line(void)
     char m[256];
     usb_wired_stats_t uws;
     usb_wired_get_stats(&uws);
-    snprintf(m, sizeof(m), "usb en=%u cfg=%u hs=%u mnt=%lu umnt=%lu rx80=%lu last=%02x tx81=%lu tx21=%lu in30=%lu sof=%lu sus=%lu rsm=%lu ep=%lu ct=%lu h=%02x%02x%02x%02x h1=%02x%02x%02x%02x u=%02x/%u n=%lu f1=%02x%02x%02x%02x%02x%02x%02x%02x sp=%04x/%u*%lu sh=%lu",
+    snprintf(m, sizeof(m), "usb en=%u cfg=%u hs=%u mnt=%lu umnt=%lu rx80=%lu last=%02x tx81=%lu tx21=%lu in30=%lu sof=%lu sus=%lu rsm=%lu ep=%lu ct=%lu h=%02x%02x%02x%02x h1=%02x%02x%02x%02x u=%02x/%u n=%lu f1=%02x%02x%02x%02x%02x%02x%02x%02x sp=%04x/%u*%lu sh=%lu sd=%02x",
              usb_wired_is_enabled() ? 1u : 0u,
              usb_wired_is_configured() ? 1u : 0u,
              usb_wired_handshake_done() ? 1u : 0u,
@@ -220,7 +220,7 @@ static void report_usb_line(void)
              uws.first8[0], uws.first8[1], uws.first8[2], uws.first8[3],
              uws.first8[4], uws.first8[5], uws.first8[6], uws.first8[7],
              uws.spi_a, uws.spi_n, (unsigned long)uws.spi_c,
-             (unsigned long)uws.short_n);
+             (unsigned long)uws.short_n, uws.subd);
     probe_line(m);
 }
 

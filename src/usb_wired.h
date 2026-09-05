@@ -60,6 +60,8 @@ typedef struct {
     uint16_t spi_a;
     uint8_t spi_n;
     uint16_t spi_c;
+    /* 直近の 0x01 要求のデータバイト (sub の次。種別・モード等の判別用)。 */
+    uint8_t subd;
     /* 2B 未満の短い受信の回数。 */
     uint16_t short_n;
 } usb_wired_stats_t;
