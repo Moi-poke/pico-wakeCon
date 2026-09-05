@@ -75,6 +75,11 @@ bool usb_wired_handshake_done(void)
     return handshake_done;
 }
 
+bool usb_wired_was_mounted(void)
+{
+    return wired_stats.mount > 0u;
+}
+
 void usb_wired_get_stats(usb_wired_stats_t *st)
 {
     if (st == NULL) {

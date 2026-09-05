@@ -117,7 +117,7 @@ void link_radio_update(void)
     gap_discoverable_control(quiet ? 0u : 1u);
     /* 電波を止めたら USB を挿し直したのと同じ状態に戻す。
      * 未列挙のときだけ蹴る (健全なセッションは churn しない)。 */
-    if (quiet && !usb_wired_is_configured()) {
+    if (quiet && usb_wired_was_mounted() && !usb_wired_is_configured()) {
         usb_wired_reconnect();
     }
 }

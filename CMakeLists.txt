@@ -38,6 +38,8 @@ add_executable(pico-wakecon
     src/link_cap.c
     src/link_beacon.c
     src/ui.c
+    src/ui_line.c
+    src/usb_cdc.c
     src/util.c
     src/usb_hid.c
     src/usb_descriptors.c

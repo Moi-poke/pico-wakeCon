@@ -1,4 +1,6 @@
 /* src/ui_line.c: 日本語コメントを残す。Pico・BTstack 非依存を保つ。 */
+#include <stddef.h>
+
 #include "ui_line.h"
 
 void ui_line_reset(ui_line_acc_t *st)

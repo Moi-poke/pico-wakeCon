@@ -25,6 +25,8 @@ void usb_wired_set_enabled(bool en);
 bool usb_wired_is_enabled(void);
 bool usb_wired_is_configured(void);
 bool usb_wired_handshake_done(void);
+/* 起動後の累積で一度でもマウントされたか (回復要否の判定用)。 */
+bool usb_wired_was_mounted(void);
 
 /* USB バス側の診断計数。列挙〜応答のどこで止まるかを見る。
  * mount/unmount はホストの bus reset/configure 由来。rx80/last80/tx81 は

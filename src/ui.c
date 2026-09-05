@@ -14,6 +14,8 @@
 #include "spi.h"
 #include "store.h"
 #include "ui.h"
+#include "ui_line.h"
+#include "usb_cdc.h"
 #include "usb_wired.h"
 #include "util.h"
 
@@ -34,20 +36,61 @@ void probe_line(const char *text)
     uart_puts(UART_ID, text);
     uart_puts(UART_ID, "\r\n");
     printf("%s\r\n", text);
+    if (usb_cdc_connected()) {
+        usb_cdc_write_line(text);
+    }
 }
 
 static char line_buf[LINE_MAX];
 static int line_len;
 
-/* コマンド入力は UART0 (GP0/GP1) 直結のみ。USB CDC は存在しない
- * (pico_enable_stdio_usb=0、記述子も HID のみ) ため、
- * W 変更を含む全コマンドは UART 側からしか届かない。構造で保証する。 */
-static int read_one_char(void)
+/* 命令受付は UART0 (GP0/GP1) と USB CDC の二重コンソール。
+ * W 変更だけは UART 側に限る (handle_line のゲートで保証する)。 */
+static int read_uart_char(void)
 {
     if (uart_is_readable(UART_ID)) {
         return (int)(unsigned char)uart_getc(UART_ID);
     }
     return -1;
+}
+
+static ui_line_acc_t uart_acc, cdc_acc;
+static ui_src_t line_src;
+
+static void handle_line(void);
+static bool ui_cmd_is_known(char c);
+
+static void deliver_line(ui_line_acc_t *acc, ui_src_t src)
+{
+    memcpy(line_buf, acc->buf, (size_t)acc->len);
+    line_len = acc->len;
+    line_src = src;
+    handle_line();
+    line_len = 0;
+}
+
+static void pump_source(int (*read_fn)(void), ui_line_acc_t *acc,
+                        ui_src_t src)
+{
+    int ci;
+    while ((ci = read_fn()) >= 0) {
+        char c = (char)ci;
+        int r;
+        if (src == UI_SRC_UART) {
+            probe_uart_rx_count++;
+        }
+        if (acc->len == 0 && !ui_cmd_is_known(c)) {
+            continue;
+        }
+        r = ui_line_feed(acc, c);
+        if (r == UI_LINE_READY) {
+            deliver_line(acc, src);
+            ui_line_reset(acc);
+        } else if (r == UI_LINE_OVERFLOW) {
+            probe_line_over++;
+            ui_line_reset(acc);
+        }
+    }
 }
 
 static void cmd_s(void)
@@ -203,7 +246,7 @@ static void report_usb_line(void)
     char m[256];
     usb_wired_stats_t uws;
     usb_wired_get_stats(&uws);
-    snprintf(m, sizeof(m), "usb en=%u cfg=%u hs=%u mnt=%lu umnt=%lu rx80=%lu last=%02x tx81=%lu tx21=%lu in30=%lu sof=%lu sus=%lu rsm=%lu ep=%lu ct=%lu h=%02x%02x%02x%02x h1=%02x%02x%02x%02x u=%02x/%u n=%lu f1=%02x%02x%02x%02x%02x%02x%02x%02x sp=%04x/%u*%lu sh=%lu sd=%02x",
+    snprintf(m, sizeof(m), "usb en=%u cfg=%u hs=%u mnt=%lu umnt=%lu rx80=%lu last=%02x tx81=%lu tx21=%lu in30=%lu sof=%lu sus=%lu rsm=%lu ep=%lu ct=%lu h=%02x%02x%02x%02x h1=%02x%02x%02x%02x u=%02x/%u n=%lu f1=%02x%02x%02x%02x%02x%02x%02x%02x sp=%04x/%u*%lu sh=%lu sd=%02x cdc=%u",
              usb_wired_is_enabled() ? 1u : 0u,
              usb_wired_is_configured() ? 1u : 0u,
              usb_wired_handshake_done() ? 1u : 0u,
@@ -220,8 +263,9 @@ static void report_usb_line(void)
              uws.unk_id, uws.unk_len, (unsigned long)uws.unk_n,
              uws.first8[0], uws.first8[1], uws.first8[2], uws.first8[3],
              uws.first8[4], uws.first8[5], uws.first8[6], uws.first8[7],
-             uws.spi_a, uws.spi_n, (unsigned long)uws.spi_c,
-             (unsigned long)uws.short_n, uws.subd);
+              uws.spi_a, uws.spi_n, (unsigned long)uws.spi_c,
+              (unsigned long)uws.short_n, uws.subd,
+              usb_cdc_connected() ? 1u : 0u);
     probe_line(m);
 }
 
@@ -250,12 +294,17 @@ static void cmd_w(void)
         probe_line("usage: W [0|1]");
         return;
     }
+    if ((v == 1u) == usb_wired_is_enabled()) {
+        report_usb_line();
+        return;
+    }
     /* Classic 側の始末 (接続中なら能動切断＋待ち受け停止) も link 側で行う。
      * 発信抑止だけでは Switch からの呼び直しを受けて再接続するため。
      * モードは Flash に残し、次回起動時に復元する (起動時から電波OFF)。 */
     usb_wired_set_enabled(v == 1u);
     link_apply_wired_mode(v == 1u);
     store_wired(v == 1u);
+    usb_wired_reconnect();
     report_usb_line();
 }
 
@@ -306,6 +355,10 @@ static void handle_line(void)
     c0 = line_buf[0];
     for (i = 0u; i < sizeof(UI_CMDS) / sizeof(UI_CMDS[0]); i++) {
         if (UI_CMDS[i].c == c0) {
+            if (c0 == 'W' && !ui_w_allowed(line_src)) {
+                probe_line("W from UART only");
+                return;
+            }
             UI_CMDS[i].fn();
             return;
         }
@@ -315,26 +368,9 @@ static void handle_line(void)
 
 void probe_uart_task(void)
 {
-    int ci;
     uint32_t now;
-    while ((ci = read_one_char()) >= 0) {
-        char c = (char)ci;
-        probe_uart_rx_count++;
-        if (c == '\n' || c == '\r') {
-            handle_line();
-            line_len = 0;
-            continue;
-        }
-        if (line_len >= LINE_MAX - 1) {
-            probe_line_over++;
-            line_len = 0;
-            continue;
-        }
-        if (line_len == 0 && !ui_cmd_is_known(c)) {
-            continue;
-        }
-        line_buf[line_len++] = c;
-    }
+    pump_source(read_uart_char, &uart_acc, UI_SRC_UART);
+    pump_source(usb_cdc_read_char, &cdc_acc, UI_SRC_CDC);
     now = to_ms_since_boot(get_absolute_time());
     link_poll(now);
     probe_watchdog_poll(now);
