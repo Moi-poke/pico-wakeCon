@@ -6,3 +6,4 @@ build-verify/
 *.bin
 .cache/
 !.vscode/*
+build-host/
