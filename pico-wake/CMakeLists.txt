@@ -47,6 +47,7 @@ add_executable(pico-wake
     app_ports_cmd.c
     app_ports_att.c
     app_att.c
+    app_ui.c
 )
 
 pico_set_program_name(pico-wake "pico-wake")
