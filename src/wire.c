@@ -4,14 +4,12 @@
  * buttons(2) hat(1) lx ly rx ry(4) vendor(1) で、入力状態は S 行の
  * PC 側値（probe_pc_*）をそのまま使う。BT 側の変換値は使わない。
  *
- * USB の記述子はモードで替える。有線では HID 単体（Switch 向け）、
- * 無線では CDC（PC 向け）である。HID＋CDC の複合は PC では動いたが
- * Switch が認識しないため、有線は HID 単体にする。
- * 列挙は起動後に起きるため、起動時に読んだモードで固定される。
- * 切替えは再起動で行う。
- *
- * 有線の VID/PID は実機の有線コントローラと合わせる。合わないと
- * Switch が無視するためである。 */
+ * USB の記述子はモードで替える。有線では任天堂 ID の HID 単体
+ * （Pro=2009、L=2006、R=2007）、無線では CDC（PC 向け）である。
+ * 公式プロコンの USB は特殊手順だが、plain HID 報告でも Switch が
+ * 受け付ける。HID＋CDC の複合は Switch が認識しないため使わない。
+ * 列挙は起動後に起きるため、起動時に読んだ種類とモードで固定される。
+ * 切替えは再起動で行う。 */
 
 #include "wire.h"
 
@@ -34,11 +32,10 @@ extern uint16_t probe_pc_buttons;
 extern uint8_t probe_pc_hat;
 extern uint8_t probe_pc_lx, probe_pc_ly, probe_pc_rx, probe_pc_ry;
 
-/* HORI POKKEN TOURNAMENT DX と同じ名乗り（Pro 用）。
- * Joy-Con は任天堂の VID と左右の PID で名乗る。 */
-#define WIRE_VID 0x0F0Du
-#define WIRE_PID 0x0092u
-
+/* 有線の名乗りは種類別に任天堂の ID を使う。Pro=2009、L=2006、R=2007。
+ * 公式プロコンの USB は特殊手順だが、plain HID 報告でも Switch が
+ * 受け付ける（PABotBase の実績）。HORI 名乗りはやめた。
+ * 報告は 16 ボタンの汎用ゲームパッド記述子。SL/SR/Capture まで載る。 */
 #define NINTENDO_VID 0x057Eu
 
 #define CDC_VID 0x2E8Au
@@ -49,27 +46,29 @@ extern uint8_t probe_pc_lx, probe_pc_ly, probe_pc_rx, probe_pc_ry;
 #define WIRE_EP_OUT 0x02u
 #define WIRE_EP_INTERVAL 5u
 
-/* 実機 HORI POKKEN CONTROLLER (0F0D:0092) と同じ 90 バイト記述子。
- * 13 ボタン＋3bit 埋め＋hat(4bit)＋4bit 埋め＋軸 4B＋予備入力 1B、
- * 予備出力 8B。入力 8B の並びは S 行の PC 側値と一致する
- * （Y=1 B=2 A=4 X=8 L=10 R=20 ZL=40 ZR=80 -=100 +=200
- *  L押=400 R押=800 H=1000 C=2000。C は埋めに落ちる）。
+/* 16 ボタンの汎用ゲームパッド記述子＋予備出力 8B。
+ * 内訳: ボタン16bit + hat(4bit) + 埋め(4bit) + 軸4B + 予備1B = 64bit。
+ * hat は Null 付きなので 8（中立）は無値として扱われる。
+ * SL/SR/Capture は上位ビットに載る。種類別の差は VID/PID だけで、
+ * 報告の形は共通にする。
+ * Application Collection で包むこと。End だけでは不正な記述子になり、
+ * ホストがゲームパッドとして認識しない。
  * const を付けない。USB の DMA が直接読むため SRAM に置く。 */
 static uint8_t wire_report_desc[] = {
     0x05, 0x01, 0x09, 0x05, 0xA1, 0x01,
-    0x15, 0x00, 0x25, 0x01, 0x35, 0x00, 0x45, 0x01,
-    0x75, 0x01, 0x95, 0x0D,
-    0x05, 0x09, 0x19, 0x01, 0x29, 0x0D,
+    0x05, 0x09, 0x19, 0x01, 0x29, 0x10,
+    0x15, 0x00, 0x25, 0x01, 0x75, 0x01, 0x95, 0x10,
     0x81, 0x02,
-    0x95, 0x03, 0x81, 0x01,
-    0x05, 0x01, 0x25, 0x07, 0x46, 0x3B, 0x01,
-    0x75, 0x04, 0x95, 0x01, 0x65, 0x14,
-    0x09, 0x39, 0x81, 0x42,
-    0x65, 0x00, 0x95, 0x01, 0x81, 0x01,
-    0x26, 0xFF, 0x00, 0x46, 0xFF, 0x00,
-    0x09, 0x30, 0x09, 0x31, 0x09, 0x32, 0x09, 0x35,
+    0x05, 0x01, 0x09, 0x39,
+    0x15, 0x00, 0x25, 0x07, 0x75, 0x04, 0x95, 0x01,
+    0x81, 0x42,
+    0x75, 0x04, 0x95, 0x01, 0x81, 0x01,
+    0x09, 0x30, 0x09, 0x31, 0x09, 0x33, 0x09, 0x34,
+    0x15, 0x00, 0x26, 0xFF, 0x00,
     0x75, 0x08, 0x95, 0x04, 0x81, 0x02,
-    0x06, 0x00, 0xFF, 0x09, 0x20, 0x95, 0x01, 0x81, 0x02,
+    0x06, 0x00, 0xFF, 0x09, 0x01,
+    0x15, 0x00, 0x26, 0xFF, 0x00,
+    0x75, 0x08, 0x95, 0x01, 0x81, 0x02,
     0x0A, 0x21, 0x26, 0x95, 0x08, 0x91, 0x02,
     0xC0,
 };
@@ -155,13 +154,8 @@ uint8_t const *tud_descriptor_device_cb(void)
     };
     /* 種類で名乗りを変える。起動後に列挙するため起動時の種類で固定。 */
     if (desc_wired.idVendor == 0u) {
-        if (type_is_pro()) {
-            desc_wired.idVendor = WIRE_VID;
-            desc_wired.idProduct = WIRE_PID;
-        } else {
-            desc_wired.idVendor = NINTENDO_VID;
-            desc_wired.idProduct = type_product_id();
-        }
+        desc_wired.idVendor = NINTENDO_VID;
+        desc_wired.idProduct = type_product_id();
     }
     return (uint8_t const *)(mode_is_wired() ? &desc_wired : &desc_wireless);
 }
@@ -220,9 +214,9 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
     }
     if (mode_is_wired()) {
         if (index == 1) {
-            text = type_is_pro() ? "HORI CO.,LTD." : "Nintendo";
+            text = "Nintendo";
         } else if (index == 2) {
-            text = type_is_pro() ? "POKKEN CONTROLLER" : type_gap_name();
+            text = type_is_pro() ? "Pro Controller" : type_gap_name();
         }
     } else {
         if (index == 1) {
