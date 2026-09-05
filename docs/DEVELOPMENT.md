@@ -7,7 +7,7 @@
 
 依存方向：`main → link/ui/hid → cap/spi/store → util`。
 BTstack・Pico SDK 依存は `main`・`link_*`・`hid` に閉じ込める。
-TinyUSB 依存は `usb_wired`・`usb_descriptors` に閉じ込める。
+TinyUSB 依存は `usb_wired`・`usb_descriptors`・`usb_cdc` に閉じ込める。
 `cap`・`util`・`usb_hid` は純粋ロジックのみに保つ（ホストテスト可能条件。
 この3つに `btstack.h` や `pico/*.h` を include しないこと）。
 

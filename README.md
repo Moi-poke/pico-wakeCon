@@ -284,7 +284,7 @@ $ninja = Join-Path $env:USERPROFILE '.pico-sdk/ninja/v1.13.2/ninja.exe'
 | `switch_hid.h` | HID 記述子・VID/PID/COD |
 | `btstack_config.h` | BTstack 設定 |
 
-ホスト単体テストは `tests/host`（`test_util`・`test_cap`・`test_usb`、CTest）。
+ホスト単体テストは `tests/host`（`test_util`・`test_cap`・`test_usb`・`test_ui_line`、CTest）。
 
 ## 謝辞・参考
 

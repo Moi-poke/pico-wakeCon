@@ -43,6 +43,13 @@ int main(void)
     CHECK(strcmp(st.buf, "P") == 0);
     /* NULL は INCOMPLETE */
     CHECK(ui_line_feed(NULL, 'x') == UI_LINE_INCOMPLETE);
+    /* NULL reset は無害 (落ちなければよい) */
+    ui_line_reset(NULL);
+    /* 内容ありの '\r' は '\n' と同じく行確定 */
+    ui_line_reset(&st);
+    CHECK(ui_line_feed(&st, 'A') == UI_LINE_INCOMPLETE);
+    CHECK(ui_line_feed(&st, '\r') == UI_LINE_READY);
+    CHECK(strcmp(st.buf, "A") == 0);
     /* W ゲート述語 */
     CHECK(ui_w_allowed(UI_SRC_UART) == 1);
     CHECK(ui_w_allowed(UI_SRC_CDC) == 0);

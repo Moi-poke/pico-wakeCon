@@ -3,7 +3,8 @@
 
 /* pico-wakecon 用 TinyUSB 設定。
  * 参考: pico-examples usb/device/dev_hid_composite 相当を最小化したもの。
- * 有線 Pro Controller は HID インタフェース1つのみ出す (CDC/MSC/MIDI/VENDOR なし)。
+ * 有線時 (W 1) は HID 1IF のみ、無線時 (W 0) は HID+CDC の複合構成を出す
+ * (MSC/MIDI/VENDOR なし)。
  * ビルド側で CFG_TUSB_OS=OPT_OS_PICO を定義すること (CMakeLists 参照)。 */
 
 #ifdef __cplusplus

@@ -8,6 +8,8 @@
 
 #include "tusb.h"
 
+#include "usb_wired.h"
+
 /* Device: USB 2.00, EP0 64B, VID 0x057E / PID 0x2009。
  * bcdDevice は ToadKing の線上のバイト 0x00,0x02 (LE) = 0x0200 を採る。
  * 実測未確認: 0x0210 説あり、T1ハードで確定。 */
@@ -184,8 +186,6 @@ static uint8_t const desc_configuration_composite[] = {
 _Static_assert(sizeof(desc_configuration_composite) ==
               COMPOSITE_CONFIG_TOTAL_LEN,
               "composite config length");
-
-#include "usb_wired.h"
 
 uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
 {

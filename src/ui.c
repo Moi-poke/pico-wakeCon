@@ -56,6 +56,8 @@ static int read_uart_char(void)
 
 static ui_line_acc_t uart_acc, cdc_acc;
 static ui_src_t line_src;
+/* CDC 切断時 (1→0) に半端な行を捨てるための前回接続状態。 */
+static bool cdc_was_connected;
 
 static void handle_line(void);
 static bool ui_cmd_is_known(char c);
@@ -369,6 +371,12 @@ static void handle_line(void)
 void probe_uart_task(void)
 {
     uint32_t now;
+    bool cdc_now = usb_cdc_connected();
+    /* 切断で半端な行を捨てる。次回接続での誤実行を防ぐ。 */
+    if (cdc_was_connected && !cdc_now) {
+        ui_line_reset(&cdc_acc);
+    }
+    cdc_was_connected = cdc_now;
     pump_source(read_uart_char, &uart_acc, UI_SRC_UART);
     pump_source(usb_cdc_read_char, &cdc_acc, UI_SRC_CDC);
     now = to_ms_since_boot(get_absolute_time());

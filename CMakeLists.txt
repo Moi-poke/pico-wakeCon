@@ -49,8 +49,8 @@ add_executable(pico-wakecon
 pico_set_program_name(pico-wakecon "pico-wakecon")
 pico_set_program_version(pico-wakecon "0.1")
 
-# stdio は使わない。USB は TinyUSB の有線 Pro Controller が専有し、
-# ログと命令は UART0 (GP0/GP1) 直結のみで扱う。
+# stdio は使わない。USB は TinyUSB の有線 Pro Controller と CDC コンソールが使う。
+# ログと命令は UART0 (GP0/GP1) 直結と USB CDC (無線時のみ) の二重コンソールで扱う。
 pico_enable_stdio_uart(pico-wakecon 0)
 pico_enable_stdio_usb(pico-wakecon 0)
 
