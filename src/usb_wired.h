@@ -52,6 +52,16 @@ typedef struct {
     uint8_t unk_id;
     uint8_t unk_len;
     uint32_t unk_n;
+    /* 0x01 サブコマンドの初出順 (重複なし、最大8件で打切り)。
+     * 直近履歴では消える序盤の手順 (mode/lights 等) を残す。 */
+    uint8_t first8[8];
+    uint8_t first8_n;
+    /* 直近の 0x10 SPI 読出の番地・長さ・回数。 */
+    uint16_t spi_a;
+    uint8_t spi_n;
+    uint16_t spi_c;
+    /* 2B 未満の短い受信の回数。 */
+    uint16_t short_n;
 } usb_wired_stats_t;
 void usb_wired_get_stats(usb_wired_stats_t *st);
 

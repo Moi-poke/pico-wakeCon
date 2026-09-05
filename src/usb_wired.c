@@ -198,6 +198,7 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
         req_len = bufsize;
     }
     if (req_len < 2u) {
+        wired_stats.short_n++;
         return;
     }
     /* 81 01 / 0x21 応答の MAC は設計メモの逆順格納に従う。
@@ -234,12 +235,32 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
         if (req_len < 11) {
             return;
         }
+        uint8_t k;
+        bool seen = false;
         sub = req[10];
         wired_stats.hist01[0] = wired_stats.hist01[1];
         wired_stats.hist01[1] = wired_stats.hist01[2];
         wired_stats.hist01[2] = wired_stats.hist01[3];
         wired_stats.hist01[3] = sub;
+        /* 初出順を保持する (上書きなし)。 */
+        for (k = 0u; k < wired_stats.first8_n && k < 8u; k++) {
+            if (wired_stats.first8[k] == sub) {
+                seen = true;
+                break;
+            }
+        }
+        if (!seen && wired_stats.first8_n < 8u) {
+            wired_stats.first8[wired_stats.first8_n++] = sub;
+        }
         if (sub == 0x10u) {
+            /* 読出番地を残す (応答内容の当否判定用)。 */
+            if (req_len >= 16) {
+                wired_stats.spi_a =
+                    (uint16_t)((uint16_t)req[11] |
+                               ((uint16_t)req[12] << 8));
+                wired_stats.spi_n = req[15];
+                wired_stats.spi_c++;
+            }
             return;
         }
         /* 0x03 mode 0x30 も full 開始合図にする (BT の full 化と同義)。
