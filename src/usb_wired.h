@@ -39,6 +39,12 @@ typedef struct {
     uint32_t sof;
     uint32_t susp;
     uint32_t resm;
+    /* ホスト→デバイス受信の経路内訳。ep_rx=OUT EP 経路、
+     * ctl_rx=control 経路 (80 xx 以外の 0x01 系等も含む)。
+     * hist は直近 4 件の 80 sub (hist[3] が最新)。 */
+    uint32_t ep_rx;
+    uint32_t ctl_rx;
+    uint8_t hist[4];
 } usb_wired_stats_t;
 void usb_wired_get_stats(usb_wired_stats_t *st);
 

@@ -199,10 +199,10 @@ static void report_usb_line(void)
 {
     /* 有線/USB の状態行。st 行の書式は触らず別行に分離する。
      * 前半 "usb en= cfg= hs=" の書式は変えない (後方に診断計数を足すのみ)。 */
-    char m[128];
+    char m[160];
     usb_wired_stats_t uws;
     usb_wired_get_stats(&uws);
-    snprintf(m, sizeof(m), "usb en=%u cfg=%u hs=%u mnt=%lu umnt=%lu rx80=%lu last=%02x tx81=%lu in30=%lu sof=%lu sus=%lu rsm=%lu",
+    snprintf(m, sizeof(m), "usb en=%u cfg=%u hs=%u mnt=%lu umnt=%lu rx80=%lu last=%02x tx81=%lu in30=%lu sof=%lu sus=%lu rsm=%lu ep=%lu ct=%lu h=%02x%02x%02x%02x",
              usb_wired_is_enabled() ? 1u : 0u,
              usb_wired_is_configured() ? 1u : 0u,
              usb_wired_handshake_done() ? 1u : 0u,
@@ -210,7 +210,9 @@ static void report_usb_line(void)
              (unsigned long)uws.rx80, uws.last80,
              (unsigned long)uws.tx81, (unsigned long)uws.in30,
              (unsigned long)uws.sof, (unsigned long)uws.susp,
-             (unsigned long)uws.resm);
+             (unsigned long)uws.resm,
+             (unsigned long)uws.ep_rx, (unsigned long)uws.ctl_rx,
+             uws.hist[0], uws.hist[1], uws.hist[2], uws.hist[3]);
     probe_line(m);
 }
 

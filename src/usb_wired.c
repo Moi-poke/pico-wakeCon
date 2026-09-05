@@ -124,10 +124,27 @@ void usb_wired_reconnect(void)
     tud_connect();
 }
 
+/* 81 応答の遅延送出用 (2wiCC 方式)。コールバック内では積むだけにし、
+ * 送信はタスク側で行う。コールバック内送信は control 転送の完了と
+ * 競合しうるため。単一スロット (ホストは stop-and-wait のため十分)。 */
+static uint8_t pend81[64];
+static bool pend81_valid;
+
 void usb_wired_task(uint32_t now_ms)
 {
     uint8_t report[USB_WIRED_INPUT_LEN];
     tud_task();
+    /* 保留中の 81 応答を先に送る (2wiCC の special first 相当)。
+     * 送れなければ次 tick に持ち越す。 */
+    if (pend81_valid) {
+        if (tud_hid_ready() &&
+            tud_hid_report(USB_WIRED_REPORT_ID_REPLY, &pend81[1],
+                           (uint16_t)(sizeof(pend81) - 1u))) {
+            pend81_valid = false;
+            wired_stats.tx81++;
+        }
+        return;
+    }
     /* 80 04 完了前は送らない。 */
     if (!wired_enabled || !wired_inited || !tud_mounted() || !handshake_done) {
         return;
@@ -154,7 +171,6 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
 {
     uint8_t req[65];
     uint16_t req_len;
-    uint8_t reply[64];
     uint8_t mac_rev[6];
     uint8_t sub;
     uint8_t i;
@@ -163,6 +179,12 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
     (void)report_type;
     if (buffer == NULL || bufsize == 0u) {
         return;
+    }
+    /* 受信経路の内訳 (80 xx 以外も数える。0x01 系の有無も見える)。 */
+    if (report_id != 0u) {
+        wired_stats.ctl_rx++;
+    } else {
+        wired_stats.ep_rx++;
     }
     /* OUT EP 経路は先頭 1B が生の report ID (0x80)。
      * control 経路は report_id 引数に分離される。両方受ける。 */
@@ -186,6 +208,10 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
     sub = req[1];
     wired_stats.rx80++;
     wired_stats.last80 = sub;
+    wired_stats.hist[0] = wired_stats.hist[1];
+    wired_stats.hist[1] = wired_stats.hist[2];
+    wired_stats.hist[2] = wired_stats.hist[3];
+    wired_stats.hist[3] = sub;
     /* W 0 中のホスト雑音で handshake を立てない (応答自体は返す)。 */
     if (wired_enabled && sub == 0x04u) {
         handshake_done = true;
@@ -197,19 +223,15 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
     for (i = 0; i < 6u; i++) {
         mac_rev[i] = probe_addr[5u - i];
     }
-    n = usb_build_81_reply(req, (int)req_len, reply, (int)sizeof(reply),
+    /* 応答は積むだけにする。送信は usb_wired_task 側で行う
+     * (2wiCC の special first 相当)。コールバック内送信は
+     * control 転送の完了と競合しうるため。 */
+    n = usb_build_81_reply(req, (int)req_len, pend81, (int)sizeof(pend81),
                            mac_rev, USB_WIRED_PROVISIONAL_DEV_TYPE);
     if (n <= 0) {
         return; /* 不正入力のみ送らない。応答は常に 64B (ID+63)。 */
     }
-    if (!tud_hid_ready()) {
-        return;
-    }
-    /* 実測未確認: 短い 81 応答 (2B/10B) をそのまま送る仮置き。64B パディング有無は T1ハードで確定。 */
-    if (tud_hid_report(USB_WIRED_REPORT_ID_REPLY, &reply[1],
-                       (uint16_t)(n - 1))) {
-        wired_stats.tx81++;
-    }
+    pend81_valid = true;
 }
 
 /* 装着で計数。tud_mounted() が立つ直前の bus reset/configure 由来。 */
