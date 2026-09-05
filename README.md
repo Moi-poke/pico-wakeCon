@@ -136,7 +136,7 @@ O 313131 0f0f0f 0ab9e6 ff3c28   ← 本体・ボタン・左・右の順
 ```
 st host=1 cid=1537 full=1 keys=1 saved=1 scan=0 bcn=0
 color body=313131 btn=0f0f0f left=0ab9e6 right=ff3c28
-saved spoof=98e255b1285b sw=010203040506
+saved spoof=aabbccddeeff sw=112233445566
 ```
 
 * `st` 行：`host`＝相手番地の記憶有無、`cid`＝HID 接続 ID（0 は未接続）、
