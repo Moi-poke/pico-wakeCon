@@ -36,6 +36,7 @@ static bool wired_enabled;
 static bool handshake_done; /* 80 04 受信で true。80 05・抜線で false に戻す。 */
 static bool wired_inited;
 static uint32_t last_input_ms;
+static usb_wired_stats_t wired_stats;
 
 void usb_wired_init(void)
 {
@@ -68,6 +69,14 @@ bool usb_wired_is_configured(void)
 bool usb_wired_handshake_done(void)
 {
     return handshake_done;
+}
+
+void usb_wired_get_stats(usb_wired_stats_t *st)
+{
+    if (st == NULL) {
+        return;
+    }
+    *st = wired_stats;
 }
 
 /* 実測未確認: 有線 Input 0x30/64B の内訳は記述子サイズ由来の仮置き。
@@ -117,6 +126,7 @@ void usb_wired_task(uint32_t now_ms)
     if (tud_hid_report(USB_WIRED_REPORT_ID_INPUT, &report[1],
                        USB_WIRED_INPUT_PAYLOAD_LEN)) {
         last_input_ms = now_ms;
+        wired_stats.in30++;
     }
 }
 
@@ -158,6 +168,8 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
         return;
     }
     sub = req[1];
+    wired_stats.rx80++;
+    wired_stats.last80 = sub;
     /* W 0 中のホスト雑音で handshake を立てない (応答自体は返す)。 */
     if (wired_enabled && sub == 0x04u) {
         handshake_done = true;
@@ -178,11 +190,21 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
         return;
     }
     /* 実測未確認: 短い 81 応答 (2B/10B) をそのまま送る仮置き。64B パディング有無は T1ハードで確定。 */
-    tud_hid_report(USB_WIRED_REPORT_ID_REPLY, &reply[1], (uint16_t)(n - 1));
+    if (tud_hid_report(USB_WIRED_REPORT_ID_REPLY, &reply[1],
+                       (uint16_t)(n - 1))) {
+        wired_stats.tx81++;
+    }
+}
+
+/* 装着で計数。tud_mounted() が立つ直前の bus reset/configure 由来。 */
+void tud_mount_cb(void)
+{
+    wired_stats.mount++;
 }
 
 /* 抜線で handshake を落とす。次セッションは 80 04 からやり直し。 */
 void tud_umount_cb(void)
 {
+    wired_stats.unmount++;
     handshake_done = false;
 }
