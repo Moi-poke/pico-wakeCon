@@ -17,7 +17,6 @@ extern uint8_t probe_lx, probe_ly, probe_rx, probe_ry;
 extern uint32_t probe_btn_press_count;
 extern bool probe_btn_was_down;
 void probe_input_reset(void);
-void probe_pack_stick(uint8_t x8, uint8_t y8, uint8_t *out);
 
 extern uint16_t probe_hid_cid;
 extern bool probe_full_mode;

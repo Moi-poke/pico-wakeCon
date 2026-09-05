@@ -39,14 +39,18 @@ add_executable(pico-wakecon
     src/link_beacon.c
     src/ui.c
     src/util.c
+    src/usb_hid.c
+    src/usb_descriptors.c
+    src/usb_wired.c
 )
 
 pico_set_program_name(pico-wakecon "pico-wakecon")
 pico_set_program_version(pico-wakecon "0.1")
 
-# stdio goes to USB CDC. UART0 (GP0/GP1) is driven directly for logs/commands.
+# stdio は使わない。USB は TinyUSB の有線 Pro Controller が専有し、
+# ログと命令は UART0 (GP0/GP1) 直結のみで扱う。
 pico_enable_stdio_uart(pico-wakecon 0)
-pico_enable_stdio_usb(pico-wakecon 1)
+pico_enable_stdio_usb(pico-wakecon 0)
 
 target_include_directories(pico-wakecon PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src
@@ -61,6 +65,11 @@ target_link_libraries(pico-wakecon
     pico_cyw43_arch_none
     pico_unique_id
     pico_btstack_flash_bank
+    tinyusb_device
+    tinyusb_board
 )
+
+# 参考 pico-examples usb/device/dev_hid_composite: TinyUSB を Pico 常駐で使う。
+target_compile_definitions(pico-wakecon PRIVATE CFG_TUSB_OS=OPT_OS_PICO)
 
 pico_add_extra_outputs(pico-wakecon)

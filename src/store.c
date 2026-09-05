@@ -9,6 +9,7 @@
 #define TAG_HOST 0x4E58484Fu  /* 'NXHO' */
 #define TAG_COLOR 0x4E58434Cu /* 'NXCL' */
 #define TAG_CAP 0x57435031u   /* 'WCP1' */
+#define TAG_WIRED 0x4E585752u /* 'NXWR' */
 
 static bool get_tlv(const btstack_tlv_t **t, void **c)
 {
@@ -114,4 +115,27 @@ void store_cap_forget(void)
         return;
     }
     tlv->delete_tag(ctx, TAG_CAP);
+}
+
+/* 有線モード保持。起動時に復元し、電波を上げる前に USB 先行で列挙させる。 */
+void store_wired(bool en)
+{
+    const btstack_tlv_t *tlv = NULL;
+    void *ctx = NULL;
+    uint8_t v = en ? 1u : 0u;
+    if (!get_tlv(&tlv, &ctx)) {
+        return;
+    }
+    tlv->store_tag(ctx, TAG_WIRED, &v, 1);
+}
+
+bool store_wired_load(void)
+{
+    const btstack_tlv_t *tlv = NULL;
+    void *ctx = NULL;
+    uint8_t v = 0u;
+    if (!get_tlv(&tlv, &ctx)) {
+        return false;
+    }
+    return tlv->get_tag(ctx, TAG_WIRED, &v, 1) == 1 && v != 0u;
 }

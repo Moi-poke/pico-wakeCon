@@ -1,4 +1,4 @@
-/* S:姿勢 N:解放 O:色 C:取込 L:一覧 B:再生 ?:状態 D/M:表示 K:鍵 P:疎通。
+/* S:姿勢 N:解放 O:色 C:取込 L:一覧 B:再生 ?:状態 D/M:表示 K:鍵 P:疎通 W:有線/無線。
  * 1文字命令の誤認を避けるため、S 行の途中で区切る受付は持たない。
  * D（HCI 生ログ）と M（監視表示）は既定で off。 */
 
@@ -6,7 +6,6 @@
 #include <string.h>
 
 #include "pico/stdio.h"
-#include "pico/error.h"
 #include "pico/time.h"
 #include "hardware/uart.h"
 #include "cap.h"
@@ -15,6 +14,7 @@
 #include "spi.h"
 #include "store.h"
 #include "ui.h"
+#include "usb_wired.h"
 #include "util.h"
 
 #define UART_ID uart0
@@ -39,16 +39,13 @@ void probe_line(const char *text)
 static char line_buf[LINE_MAX];
 static int line_len;
 
+/* コマンド入力は UART0 (GP0/GP1) 直結のみ。USB CDC は存在しない
+ * (pico_enable_stdio_usb=0、記述子も HID のみ) ため、
+ * W 変更を含む全コマンドは UART 側からしか届かない。構造で保証する。 */
 static int read_one_char(void)
 {
     if (uart_is_readable(UART_ID)) {
         return (int)(unsigned char)uart_getc(UART_ID);
-    }
-    {
-        int ch = getchar_timeout_us(0);
-        if (ch != PICO_ERROR_TIMEOUT) {
-            return ch;
-        }
     }
     return -1;
 }
@@ -80,6 +77,11 @@ static void cmd_o(void)
         store_color();
         util_format_color(m, sizeof(m));
         probe_line(m);
+        /* 有線中は挿し直し相当に戻して読み直させる。
+         * 色の読出は接続時1回きりのため。 */
+        if (usb_wired_is_enabled()) {
+            usb_wired_reconnect();
+        }
     } else {
         probe_line("usage: O <body> <btn> <left> <right> (hex)");
     }
@@ -194,6 +196,69 @@ static void cmd_p(void)
     probe_line("PONG");
 }
 
+static void report_usb_line(void)
+{
+    /* 有線/USB の状態行。st 行の書式は触らず別行に分離する。
+     * 前半 "usb en= cfg= hs=" の書式は変えない (後方に診断計数を足すのみ)。 */
+    char m[256];
+    usb_wired_stats_t uws;
+    usb_wired_get_stats(&uws);
+    snprintf(m, sizeof(m), "usb en=%u cfg=%u hs=%u mnt=%lu umnt=%lu rx80=%lu last=%02x tx81=%lu tx21=%lu in30=%lu sof=%lu sus=%lu rsm=%lu ep=%lu ct=%lu h=%02x%02x%02x%02x h1=%02x%02x%02x%02x u=%02x/%u n=%lu f1=%02x%02x%02x%02x%02x%02x%02x%02x sp=%04x/%u*%lu sh=%lu sd=%02x",
+             usb_wired_is_enabled() ? 1u : 0u,
+             usb_wired_is_configured() ? 1u : 0u,
+             usb_wired_handshake_done() ? 1u : 0u,
+             (unsigned long)uws.mount, (unsigned long)uws.unmount,
+             (unsigned long)uws.rx80, uws.last80,
+             (unsigned long)uws.tx81, (unsigned long)uws.tx21,
+             (unsigned long)uws.in30,
+             (unsigned long)uws.sof, (unsigned long)uws.susp,
+             (unsigned long)uws.resm,
+             (unsigned long)uws.ep_rx, (unsigned long)uws.ctl_rx,
+             uws.hist[0], uws.hist[1], uws.hist[2], uws.hist[3],
+             uws.hist01[0], uws.hist01[1], uws.hist01[2],
+             uws.hist01[3],
+             uws.unk_id, uws.unk_len, (unsigned long)uws.unk_n,
+             uws.first8[0], uws.first8[1], uws.first8[2], uws.first8[3],
+             uws.first8[4], uws.first8[5], uws.first8[6], uws.first8[7],
+             uws.spi_a, uws.spi_n, (unsigned long)uws.spi_c,
+             (unsigned long)uws.short_n, uws.subd);
+    probe_line(m);
+}
+
+static void cmd_w(void)
+{
+    /* W[ 0|1]: 0=無線/BT、1=有線/USB。引数なしは現在値表示。
+     * 数字の解釈は cmd_c のパターン踏襲。不正・範囲外は usage 行のみで状態不変。 */
+    unsigned long v = 0u;
+    int digits = 0;
+    int p;
+    if (line_len <= 1) {
+        report_usb_line();
+        return;
+    }
+    p = 1;
+    while (p < line_len && line_buf[p] == ' ') {
+        p++;
+    }
+    while (p < line_len && line_buf[p] >= '0' &&
+           line_buf[p] <= '9') {
+        v = v * 10u + (unsigned long)(line_buf[p] - '0');
+        p++;
+        digits++;
+    }
+    if (digits == 0 || p != line_len || v > 1u) {
+        probe_line("usage: W [0|1]");
+        return;
+    }
+    /* Classic 側の始末 (接続中なら能動切断＋待ち受け停止) も link 側で行う。
+     * 発信抑止だけでは Switch からの呼び直しを受けて再接続するため。
+     * モードは Flash に残し、次回起動時に復元する (起動時から電波OFF)。 */
+    usb_wired_set_enabled(v == 1u);
+    link_apply_wired_mode(v == 1u);
+    store_wired(v == 1u);
+    report_usb_line();
+}
+
 typedef void (*ui_cmd_fn)(void);
 typedef struct {
     char c;
@@ -214,6 +279,7 @@ static const ui_cmd_t UI_CMDS[] = {
     { 'K', cmd_k },
     { 'P', cmd_p },
     { 'p', cmd_p },
+    { 'W', cmd_w },
 };
 
 static bool ui_cmd_is_known(char c)
@@ -302,6 +368,7 @@ void probe_show_status(void)
                  probe_cap_saved.switch_mac[5]);
         probe_line(m);
     }
+    report_usb_line();
 }
 
 void probe_heartbeat_handler(btstack_timer_source_t *ts)

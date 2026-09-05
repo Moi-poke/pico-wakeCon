@@ -34,20 +34,6 @@ void probe_input_reset(void)
     probe_btn_was_down = false;
 }
 
-/* PC 側 8bit(0-255,0x80 中立) → BT 12bit 2軸3B。
- * y は上下が逆なので 12bit 化してから反転する。 */
-void probe_pack_stick(uint8_t x8, uint8_t y8, uint8_t *out)
-{
-    uint16_t x = (uint16_t)x8 << 4;
-    uint16_t y = (uint16_t)4096 - ((uint16_t)y8 << 4);
-    if (y > 4095u) {
-        y = 4095u;
-    }
-    out[0] = (uint8_t)(x & 0xFFu);
-    out[1] = (uint8_t)(((x >> 8) & 0x0Fu) | ((y & 0x0Fu) << 4));
-    out[2] = (uint8_t)((y >> 4) & 0xFFu);
-}
-
 /* ---- 送信状態 ---- */
 uint16_t probe_hid_cid;
 bool probe_full_mode;
@@ -148,8 +134,8 @@ uint16_t probe_build_reply(uint8_t ack, uint8_t subcmd)
     reply_buf[4] = probe_btn[0];
     reply_buf[5] = probe_btn[1];
     reply_buf[6] = probe_btn[2];
-    probe_pack_stick(probe_lx, probe_ly, &reply_buf[7]);
-    probe_pack_stick(probe_rx, probe_ry, &reply_buf[10]);
+    util_pack_stick_12bit(probe_lx, probe_ly, &reply_buf[7]);
+    util_pack_stick_12bit(probe_rx, probe_ry, &reply_buf[10]);
     reply_buf[13] = 0x08u;
     reply_buf[14] = ack;
     reply_buf[15] = subcmd;
@@ -173,8 +159,8 @@ void probe_can_send_now(void)
         f[4] = probe_btn[0];
         f[5] = probe_btn[1];
         f[6] = probe_btn[2];
-        probe_pack_stick(probe_lx, probe_ly, &f[7]);
-        probe_pack_stick(probe_rx, probe_ry, &f[10]);
+        util_pack_stick_12bit(probe_lx, probe_ly, &f[7]);
+        util_pack_stick_12bit(probe_rx, probe_ry, &f[10]);
         f[13] = 0x08u;
         hid_device_send_interrupt_message(probe_hid_cid, f, sizeof(f));
         probe_state_sent++;

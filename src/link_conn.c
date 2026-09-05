@@ -6,6 +6,7 @@
 #include "link.h"
 #include "switch_hid.h"
 #include "ui.h"
+#include "usb_wired.h"
 
 bd_addr_t probe_addr;
 
@@ -37,6 +38,13 @@ static uint32_t outgoing_at_ms;
 
 void link_reconnect_handler(btstack_timer_source_t *ts)
 {
+    /* 有線モード中は Classic に出ていかない。二重認識防止。
+     * タイマだけ繋ぎ直して周期を保つ (W 0 で通常輪に戻る)。 */
+    if (usb_wired_is_enabled()) {
+        btstack_run_loop_set_timer(ts, RECONNECT_RETRY_MS);
+        btstack_run_loop_add_timer(ts);
+        return;
+    }
     if (probe_outgoing_tried && probe_hid_cid == 0u && outgoing_at_ms != 0u) {
         uint32_t waited =
             to_ms_since_boot(get_absolute_time()) - outgoing_at_ms;
@@ -82,6 +90,54 @@ void link_mark_connected(void)
 {
     probe_outgoing_tried = true;
     outgoing_at_ms = 0u;
+}
+
+/* 有線モード保持。BT 電源の二重切替を避けるための現在値。
+ * 電源操作は link_radio_update に一元化するため初期値は false
+ * (起動時の link_apply_wired_mode が必要に応じて ON する)。 */
+static bool link_wired;
+static bool bt_powered;
+
+void link_radio_update(void)
+{
+    /* 有線中は電波を止める。無線チップが動いていると Switch 側が
+     * USB を列挙しない (実測)。取込・再生中は電波が要るので戻す。 */
+    bool quiet = link_wired && !probe_scanning && !probe_beacon;
+    bool want_on = !quiet;
+    if (want_on != bt_powered) {
+        hci_power_control(want_on ? HCI_POWER_ON : HCI_POWER_OFF);
+        bt_powered = want_on;
+        if (want_on) {
+            /* 電源再投入で transport の MAC が既定に戻るため掛け直す。
+             * 掛けないと別機器扱い (88:A2:9E...) になり再接続できない。 */
+            hci_set_bd_addr(probe_addr);
+        }
+    }
+    gap_connectable_control(quiet ? 0u : 1u);
+    gap_discoverable_control(quiet ? 0u : 1u);
+    /* 電波を止めたら USB を挿し直したのと同じ状態に戻す。
+     * 未列挙のときだけ蹴る (健全なセッションは churn しない)。 */
+    if (quiet && !usb_wired_is_configured()) {
+        usb_wired_reconnect();
+    }
+}
+
+void link_apply_wired_mode(bool wired)
+{
+    link_wired = wired;
+    if (wired) {
+        /* 接続中なら先に切る。切断完了は HID_SUBEVENT_CONNECTION_CLOSED 経由で
+         * handle_hid_meta が始末する (cid=0・link_note_disconnected)。 */
+        if (probe_hid_cid != 0u) {
+            hid_device_disconnect(probe_hid_cid);
+        }
+    } else {
+        /* 無線に戻すときは USB 側を外す。黙ったまま残すと二重認識になる。 */
+        usb_wired_disconnect();
+    }
+    /* Switch からの呼び直し (着信 page) 対策と電波停止は update に集約。
+     * LE 広告・スキャンの要否は update が見る。 */
+    link_radio_update();
 }
 
 int link_key_count(void)
