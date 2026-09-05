@@ -106,18 +106,6 @@ void usb_wired_pump(void)
     tud_task();
 }
 
-void usb_wired_reconnect(void)
-{
-    tud_disconnect();
-    sleep_ms(50);
-    tud_connect();
-}
-
-void usb_wired_disconnect(void)
-{
-    tud_disconnect();
-}
-
 /* 応答の遅延送出用 (2wiCC 方式)。コールバック内では積むだけにし、
  * 送信はタスク側で行う。コールバック内送信は control 転送の完了と
  * 競合しうるため。単一スロット (ホストは stop-and-wait のため十分)。 */
@@ -125,6 +113,25 @@ static uint8_t pend_resp[64];
 static uint8_t pend_resp_id;
 static bool pend_resp_valid;
 static uint8_t usb_player;
+
+/* ホストに再列挙させる。自己切断では tud_umount_cb が来ないため、
+ * セッション状態 (hs・保留応答) をここで明示的に落とす。
+ * 落とさないと未接続のままゲートが開いた幽霊状態になる。
+ * 切断は 500ms (50ms ではホストが除去を認識しない実測)。
+ * run loop 上で呼ぶ (約0.5秒止まる。O 等の稀な操作のみ)。 */
+void usb_wired_reconnect(void)
+{
+    handshake_done = false;
+    pend_resp_valid = false;
+    tud_disconnect();
+    sleep_ms(500);
+    tud_connect();
+}
+
+void usb_wired_disconnect(void)
+{
+    tud_disconnect();
+}
 
 void usb_wired_task(uint32_t now_ms)
 {
