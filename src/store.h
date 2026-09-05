@@ -24,8 +24,6 @@ void store_mode_save(uint8_t mode);
 bool store_mode_load(uint8_t *mode);
 void store_rescue_save(uint8_t count);
 bool store_rescue_load(uint8_t *count);
-void store_type_save(uint8_t type);
-bool store_type_load(uint8_t *type);
 
 #ifdef __cplusplus
 }

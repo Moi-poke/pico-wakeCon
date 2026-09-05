@@ -14,7 +14,6 @@
 #include "mode.h"
 #include "spi.h"
 #include "store.h"
-#include "type.h"
 #include "ui.h"
 #include "wire.h"
 #include "switch_hid.h"
@@ -251,7 +250,7 @@ int main(void)
         33, 1, 1, 1, 0, 0, 0xFFFF, 0xFFFF, 3200,
         switch_bt_report_descriptor,
         sizeof(switch_bt_report_descriptor),
-        type_is_pro() ? SWITCH_HID_NAME : type_gap_name(),
+        SWITCH_HID_NAME,
     };
     stdio_init_all();
     uart_init(UART_ID, BAUD_RATE);
@@ -271,8 +270,6 @@ int main(void)
             tight_loop_contents();
         }
     }
-    /* 種類を先に読む。MAC が種類ごとに変わるため link_init より前。 */
-    type_boot();
     link_init();
     mode_boot();
     /* USB CDC の読み書きは自前ドライバ（wire.c）が行う。 */
@@ -285,7 +282,7 @@ int main(void)
         gap_discoverable_control(1);
         gap_connectable_control(1);
         gap_set_class_of_device(SWITCH_CLASS_OF_DEVICE);
-        gap_set_local_name(type_gap_name());
+        gap_set_local_name(SWITCH_GAP_NAME);
         gap_set_default_link_policy_settings(LM_LINK_POLICY_ENABLE_ROLE_SWITCH |
                                              LM_LINK_POLICY_ENABLE_SNIFF_MODE);
         gap_set_allow_role_switch(true);
@@ -311,7 +308,7 @@ int main(void)
         device_id_create_sdp_record(pnp_service_buffer,
                                     sdp_create_service_record_handle(),
                                     DEVICE_ID_VENDOR_ID_SOURCE_USB,
-                                    SWITCH_VENDOR_ID, type_product_id(),
+                                    SWITCH_VENDOR_ID, SWITCH_PRODUCT_ID,
                                     SWITCH_PRODUCT_VERSION);
         btstack_assert(de_get_len(pnp_service_buffer) <= sizeof(pnp_service_buffer));
         sdp_register_service(pnp_service_buffer);

@@ -23,7 +23,6 @@
 #include "pico/unique_id.h"
 
 #include "mode.h"
-#include "type.h"
 
 /* hid.c が持つ S 行の PC 側値。hid.h は btstack.h を引くため、
  * 同じ TU では TinyUSB の同名型と衝突する。値の型だけ要るので
@@ -32,11 +31,10 @@ extern uint16_t probe_pc_buttons;
 extern uint8_t probe_pc_hat;
 extern uint8_t probe_pc_lx, probe_pc_ly, probe_pc_rx, probe_pc_ry;
 
-/* 有線の名乗りは種類別に任天堂の ID を使う。Pro=2009、L=2006、R=2007。
- * 公式プロコンの USB は特殊手順だが、plain HID 報告でも Switch が
- * 受け付ける（PABotBase の実績）。HORI 名乗りはやめた。
- * 報告は 16 ボタンの汎用ゲームパッド記述子。SL/SR/Capture まで載る。 */
+/* 有線の名乗りは Pro Controller (057E:2009) で固定。
+ * 公式の USB は特殊手順だが、plain HID 報告でも Switch が受け付ける。 */
 #define NINTENDO_VID 0x057Eu
+#define PRO_PID 0x2009u
 
 #define CDC_VID 0x2E8Au
 #define CDC_PID 0x000Au
@@ -152,10 +150,10 @@ uint8_t const *tud_descriptor_device_cb(void)
         .iSerialNumber = 0x00,
         .bNumConfigurations = 0x01,
     };
-    /* 種類で名乗りを変える。起動後に列挙するため起動時の種類で固定。 */
+    /* 起動後に列挙するため固定値でよい。 */
     if (desc_wired.idVendor == 0u) {
         desc_wired.idVendor = NINTENDO_VID;
-        desc_wired.idProduct = type_product_id();
+        desc_wired.idProduct = PRO_PID;
     }
     return (uint8_t const *)(mode_is_wired() ? &desc_wired : &desc_wireless);
 }
@@ -216,7 +214,7 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
         if (index == 1) {
             text = "Nintendo";
         } else if (index == 2) {
-            text = type_is_pro() ? "Pro Controller" : type_gap_name();
+            text = "Pro Controller";
         }
     } else {
         if (index == 1) {

@@ -11,7 +11,6 @@
 #define TAG_CAP 0x57435031u   /* 'WCP1' */
 #define TAG_MODE 0x4E584D44u  /* 'NXMD' */
 #define TAG_RESCUE 0x4E584452u /* 'NXDR' */
-#define TAG_TYPE 0x4E585459u  /* 'NXTY' */
 
 void store_host(bd_addr_t addr)
 {
@@ -172,32 +171,5 @@ bool store_rescue_load(uint8_t *count)
         return true;
     }
     *count = value;
-    return true;
-}
-
-void store_type_save(uint8_t type)
-{
-    const btstack_tlv_t *tlv = NULL;
-    void *ctx = NULL;
-    btstack_tlv_get_instance(&tlv, &ctx);
-    if (tlv == NULL) {
-        return;
-    }
-    tlv->store_tag(ctx, TAG_TYPE, &type, 1);
-}
-
-bool store_type_load(uint8_t *type)
-{
-    const btstack_tlv_t *tlv = NULL;
-    void *ctx = NULL;
-    uint8_t value = 0u;
-    btstack_tlv_get_instance(&tlv, &ctx);
-    if (tlv == NULL) {
-        return false;
-    }
-    if (tlv->get_tag(ctx, TAG_TYPE, &value, 1) != 1) {
-        return false;
-    }
-    *type = value;
     return true;
 }
