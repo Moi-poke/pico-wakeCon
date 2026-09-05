@@ -28,6 +28,11 @@ typedef struct {
     uint8_t last80;
     uint32_t tx81;
     uint32_t in30;
+    /* バス生存の証拠。sof はホストの 1ms フレーム数 (0 のままなら電気的に無音)。
+     * susp/rsm はホストのサスペンド/レジューム。W 0 中も数える。 */
+    uint32_t sof;
+    uint32_t susp;
+    uint32_t resm;
 } usb_wired_stats_t;
 void usb_wired_get_stats(usb_wired_stats_t *st);
 

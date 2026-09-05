@@ -45,6 +45,9 @@ void usb_wired_init(void)
     last_input_ms = 0u;
     /* Task 3 の記述子をリンク GC から生かし列挙させる。 */
     (void)tud_init(BOARD_TUD_RHPORT);
+    /* SOF 計数はバス生存の証拠 (ホストがフレームを回しているか)。
+     * 1ms 毎に tud_sof_cb が来る。 */
+    tud_sof_cb_enable(true);
     wired_inited = true;
 }
 
@@ -207,4 +210,23 @@ void tud_umount_cb(void)
 {
     wired_stats.unmount++;
     handshake_done = false;
+}
+
+/* SOF 到達 = ホストがバスにフレームを流している (列挙前でも進む)。
+ * サスペンド中は止まる。いずれも TinyUSB の weak 既定の上書き。 */
+void tud_sof_cb(uint32_t frame_count)
+{
+    (void)frame_count;
+    wired_stats.sof++;
+}
+
+void tud_suspend_cb(bool remote_wakeup_en)
+{
+    (void)remote_wakeup_en;
+    wired_stats.susp++;
+}
+
+void tud_resume_cb(void)
+{
+    wired_stats.resm++;
 }
