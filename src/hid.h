@@ -16,10 +16,6 @@ extern uint8_t probe_btn[3];
 extern uint8_t probe_lx, probe_ly, probe_rx, probe_ry;
 extern uint32_t probe_btn_press_count;
 extern bool probe_btn_was_down;
-/* 有線 USB 報告用の影（S 行の PC 側値）。 */
-extern uint16_t probe_pc_buttons;
-extern uint8_t probe_pc_hat;
-extern uint8_t probe_pc_lx, probe_pc_ly, probe_pc_rx, probe_pc_ry;
 void probe_input_reset(void);
 void probe_pack_stick(uint8_t x8, uint8_t y8, uint8_t *out);
 

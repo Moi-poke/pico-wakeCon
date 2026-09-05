@@ -1,5 +1,4 @@
-/* S:姿勢 N:解放 O:色 C:取込 L:一覧 B:再生 ?:状態 D/M:表示 K:鍵 P:疎通
- * W:有線無線の照会切替。
+/* S:姿勢 N:解放 O:色 C:取込 L:一覧 B:再生 ?:状態 D/M:表示 K:鍵 P:疎通。
  * 1文字命令の誤認を避けるため、S 行の途中で区切る受付は持たない。
  * D（HCI 生ログ）と M（監視表示）は既定で off。 */
 
@@ -13,7 +12,6 @@
 #include "cap.h"
 #include "hid.h"
 #include "link.h"
-#include "mode.h"
 #include "spi.h"
 #include "store.h"
 #include "ui.h"
@@ -198,22 +196,6 @@ static void handle_line(void)
         probe_line("PONG");
         return;
     }
-    if (c0 == 'W') {
-        /* 有線無線の照会と切替。W だけなら表示、W 0/1 で保存して再起動。 */
-        if (line_len > 1) {
-            int p = 1;
-            while (p < line_len && line_buf[p] == ' ') {
-                p++;
-            }
-            if (p < line_len && (line_buf[p] == '0' || line_buf[p] == '1')) {
-                mode_request_switch((uint8_t)(line_buf[p] - '0'));
-            }
-            probe_line("usage: W [0 wireless | 1 wired]");
-            return;
-        }
-        probe_line(mode_is_wired() ? "mode=wired" : "mode=wireless");
-        return;
-    }
     probe_s_line_ng++;
 }
 
@@ -236,7 +218,7 @@ void probe_uart_task(void)
         }
         if (line_len == 0 && c != 'S' && c != 'N' && c != 'O' &&
             c != 'C' && c != 'L' && c != 'B' && c != '?' && c != 'X' &&
-            c != 'D' && c != 'M' && c != 'K' && c != 'W' &&
+            c != 'D' && c != 'M' && c != 'K' &&
             c != 'P' && c != 'p') {
             continue;
         }
@@ -251,12 +233,11 @@ void probe_show_status(void)
 {
     char m[128];
     snprintf(m, sizeof(m),
-             "st host=%u cid=%u full=%u keys=%d saved=%u scan=%u bcn=%u mode=%s",
+             "st host=%u cid=%u full=%u keys=%d saved=%u scan=%u bcn=%u",
              probe_host_known ? 1u : 0u,
              (unsigned)probe_hid_cid, probe_full_mode ? 1u : 0u,
              link_key_count(), probe_cap_valid ? 1u : 0u,
-             probe_scanning ? 1u : 0u, probe_beacon ? 1u : 0u,
-             mode_is_wired() ? "wired" : "wireless");
+             probe_scanning ? 1u : 0u, probe_beacon ? 1u : 0u);
     probe_line(m);
     /* 現在の本体色。O で変えた内容が残っているかここで確かめられる。
      * 形式は O の応答と同じ "color " 接頭にする。 */
@@ -288,7 +269,6 @@ void probe_heartbeat_handler(btstack_timer_source_t *ts)
 {
     char msg[144];
     probe_uart_task();
-    mode_second_tick();
     if (probe_reconnect_pending) {
         probe_reconnect_pending = false;
         snprintf(msg, sizeof(msg), "reconnect try=%lu rc=0x%02x",

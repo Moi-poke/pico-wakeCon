@@ -19,13 +19,6 @@ uint8_t probe_rx = 0x80, probe_ry = 0x80;
 uint32_t probe_btn_press_count;
 bool probe_btn_was_down;
 
-/* 有線 USB 報告用の影。S 行の PC 側値をそのまま保つ。
- * BT 側（probe_btn 等）は変換後の値なので、有線報告には使えない。 */
-uint16_t probe_pc_buttons;
-uint8_t probe_pc_hat;
-uint8_t probe_pc_lx = 0x80, probe_pc_ly = 0x80;
-uint8_t probe_pc_rx = 0x80, probe_pc_ry = 0x80;
-
 void probe_input_reset(void)
 {
     probe_btn[0] = 0u;
@@ -36,12 +29,6 @@ void probe_input_reset(void)
     probe_rx = 0x80u;
     probe_ry = 0x80u;
     probe_btn_was_down = false;
-    probe_pc_buttons = 0u;
-    probe_pc_hat = 8u;
-    probe_pc_lx = 0x80u;
-    probe_pc_ly = 0x80u;
-    probe_pc_rx = 0x80u;
-    probe_pc_ry = 0x80u;
 }
 
 /* PC 側 8bit(0-255,0x80 中立) → BT 12bit 2軸3B。
@@ -337,12 +324,6 @@ int probe_parse_s_line(const char *s, int len)
     probe_ly = (uint8_t)v[3];
     probe_rx = (uint8_t)v[4];
     probe_ry = (uint8_t)v[5];
-    probe_pc_buttons = (uint16_t)v[0];
-    probe_pc_hat = (uint8_t)v[1] > 8u ? 8u : (uint8_t)v[1];
-    probe_pc_lx = (uint8_t)v[2];
-    probe_pc_ly = (uint8_t)v[3];
-    probe_pc_rx = (uint8_t)v[4];
-    probe_pc_ry = (uint8_t)v[5];
     if ((probe_btn[0] | probe_btn[1] | probe_btn[2]) != 0u &&
         !probe_btn_was_down) {
         probe_btn_press_count++;
