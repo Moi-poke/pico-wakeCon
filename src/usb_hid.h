@@ -23,6 +23,12 @@ typedef struct {
  * 成功時 64、不正時 0。Pico/BTstack 非依存。 */
 int usb_build_21_reply(const uint8_t *req, int req_len, uint8_t *out,
                        int out_max, const usb_sub_ctx_t *ctx);
+/* 12B 状態部 (2wiCC ControllerData 互換: timer・電池・3B ボタン・
+ * 6B スティック・振動)。0x21 接頭と 0x30 本体で共有する。 */
+void usb_pack_controller_data(uint8_t out12[12], const usb_sub_ctx_t *ctx);
+/* 0x30 入力レポート 64B (ID + 12B 状態 + 36B IMU(0) + 15B 埋め)。
+ * 成功時 64。IMU 無効時は 0 のまま (2wiCC 通り)。 */
+int usb_build_30_report(const usb_sub_ctx_t *ctx, uint8_t out64[64]);
 #ifdef __cplusplus
 }
 #endif

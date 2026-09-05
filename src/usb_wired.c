@@ -83,33 +83,22 @@ void usb_wired_get_stats(usb_wired_stats_t *st)
     *st = wired_stats;
 }
 
-/* 実測未確認: 有線 Input 0x30/64B の内訳は記述子サイズ由来の仮置き。
- * ボタン 2B・スティック 4軸16bit LE・ハット 1B・残り 0 埋め。
- * BT 側の probe_pack_stick (12bit packed) は有線 16bit 欄に合わないため使わない。
- * spi_color_6050 の配置も T1 実測待ちのため載せない。T1ハードで確定する。 */
+/* 有線 Input 0x30 は実機配置 (2wiCC ControllerData 互換)。
+ * 12B 状態 + 36B IMU(無効のため 0) + 15B 埋め。mac/player は使わない。 */
 static void build_input_report(uint8_t out[USB_WIRED_INPUT_LEN])
 {
-    uint16_t v;
-    memset(out, 0, USB_WIRED_INPUT_LEN);
-    out[0] = USB_WIRED_REPORT_ID_INPUT;
-    out[1] = probe_btn[0];
-    out[2] = probe_btn[1];
-    /* TODO(T1): btn[2] の割付け未確認のため送らない。ハットは中立固定。T1ハードで確定。 */
-    /* 8bit (0x80 中立) → 16bit LE 仮置き ((v<<8)|v で 0x80→0x8080。0x8000 中心・Y 反転は未確定)。
-     * BT 側 probe_pack_stick との対応も T1ハードで確定。Y は実測未確認のため素通し。 */
-    v = (uint16_t)(((uint16_t)probe_lx << 8) | probe_lx);
-    out[3] = (uint8_t)(v & 0xFFu);
-    out[4] = (uint8_t)(v >> 8);
-    v = (uint16_t)(((uint16_t)probe_ly << 8) | probe_ly);
-    out[5] = (uint8_t)(v & 0xFFu);
-    out[6] = (uint8_t)(v >> 8);
-    v = (uint16_t)(((uint16_t)probe_rx << 8) | probe_rx);
-    out[7] = (uint8_t)(v & 0xFFu);
-    out[8] = (uint8_t)(v >> 8);
-    v = (uint16_t)(((uint16_t)probe_ry << 8) | probe_ry);
-    out[9] = (uint8_t)(v & 0xFFu);
-    out[10] = (uint8_t)(v >> 8);
-    out[11] = 0x08u; /* 実測未確認: ハット無操作の仮置き */
+    usb_sub_ctx_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.btn[0] = probe_btn[0];
+    ctx.btn[1] = probe_btn[1];
+    ctx.btn[2] = probe_btn[2];
+    ctx.lx = probe_lx;
+    ctx.ly = probe_ly;
+    ctx.rx = probe_rx;
+    ctx.ry = probe_ry;
+    ctx.timer =
+        (uint8_t)(to_ms_since_boot(get_absolute_time()) >> 5);
+    usb_build_30_report(&ctx, out);
 }
 
 void usb_wired_pump(void)

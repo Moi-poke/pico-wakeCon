@@ -53,16 +53,27 @@ int usb_build_81_reply(const uint8_t *req, int req_len, uint8_t *out,
 
 /* 0x21 応答の共通 12B (2wiCC ControllerData 互換)。
  * timer・電池・接続・姿勢は ctx から。電池は充電中+満充電固定。 */
-static void usb_prefix_12(uint8_t *out, const usb_sub_ctx_t *ctx)
+void usb_pack_controller_data(uint8_t out12[12], const usb_sub_ctx_t *ctx)
 {
-    out[0] = ctx->timer;
-    out[1] = 0x91u;
-    out[2] = ctx->btn[0];
-    out[3] = (uint8_t)(ctx->btn[1] | 0x80u);
-    out[4] = (uint8_t)(ctx->btn[2] & 0xCFu);
-    util_pack_stick_12bit(ctx->lx, ctx->ly, &out[5]);
-    util_pack_stick_12bit(ctx->rx, ctx->ry, &out[8]);
-    out[11] = 0x09u;
+    out12[0] = ctx->timer;
+    out12[1] = 0x91u;
+    out12[2] = ctx->btn[0];
+    out12[3] = (uint8_t)(ctx->btn[1] | 0x80u);
+    out12[4] = (uint8_t)(ctx->btn[2] & 0xCFu);
+    util_pack_stick_12bit(ctx->lx, ctx->ly, &out12[5]);
+    util_pack_stick_12bit(ctx->rx, ctx->ry, &out12[8]);
+    out12[11] = 0x09u;
+}
+
+int usb_build_30_report(const usb_sub_ctx_t *ctx, uint8_t out64[64])
+{
+    if (ctx == NULL || out64 == NULL) {
+        return 0;
+    }
+    memset(out64, 0, 64);
+    out64[0] = 0x30u;
+    usb_pack_controller_data(&out64[1], ctx);
+    return 64;
 }
 
 /* 0x01 xx → 64B の 0x21 応答。02/03/10/30/40/48 と既定 ack。
@@ -84,7 +95,7 @@ int usb_build_21_reply(const uint8_t *req, int req_len, uint8_t *out,
     sub = req[10];
     memset(out, 0, 64);
     out[0] = 0x21u;
-    usb_prefix_12(&out[1], ctx);
+    usb_pack_controller_data(&out[1], ctx);
     switch (sub) {
         case 0x02u:
             out[13] = 0x82u;

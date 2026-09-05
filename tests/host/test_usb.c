@@ -148,6 +148,30 @@ int main(void)
             CHECK(usb_build_21_reply(q30x, 11, out, sizeof(out), &ctx) == 0);
         }
     }
+    /* 0x30 入力レポート: ID + 12B 状態 + 36B IMU(0) + 15B 埋め。 */
+    {
+        usb_sub_ctx_t ctx30;
+        uint8_t r30[64];
+        int i;
+        memset(&ctx30, 0, sizeof(ctx30));
+        ctx30.btn[0] = 0x08u;
+        ctx30.btn[1] = 0x10u;
+        ctx30.btn[2] = 0xF2u;
+        ctx30.lx = 0x80u; ctx30.ly = 0x80u;
+        ctx30.rx = 0x80u; ctx30.ry = 0x80u;
+        ctx30.timer = 0x55u;
+        n = usb_build_30_report(&ctx30, r30);
+        CHECK(n == 64 && r30[0] == 0x30u);
+        CHECK(r30[1] == 0x55u && r30[2] == 0x91u);
+        CHECK(r30[3] == 0x08u && r30[4] == 0x90u && r30[5] == 0xC2u);
+        CHECK(r30[6] == 0x00u && r30[7] == 0x08u && r30[8] == 0x80u);
+        CHECK(r30[12] == 0x09u);
+        for (i = 13; i < 64; i++) {
+            CHECK(r30[i] == 0u);
+        }
+        CHECK(usb_build_30_report(NULL, r30) == 0);
+        CHECK(usb_build_30_report(&ctx30, NULL) == 0);
+    }
     if (fails == 0) { printf("OK usb\n"); }
     return fails != 0;
 }
