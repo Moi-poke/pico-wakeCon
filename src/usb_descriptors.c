@@ -157,10 +157,43 @@ static uint8_t const desc_configuration[] = {
 /* 純正 wTotalLength 41 との一致をビルドで縛る。 */
 _Static_assert(sizeof(desc_configuration) == 41u, "wired config must be 41B");
 
+/* 複合構成 (W 0) 用の番号。ITF_NUM_HID (=0) と衝突させない。 */
+enum {
+    ITF_NUM_CDC = 1,
+    ITF_NUM_CDC_DATA = 2,
+    ITF_NUM_TOTAL_COMPOSITE = 3,
+};
+
+/* W 0 用の複合構成。ID 部は純粋版と同一値にする。
+ * CDC は通知 0x83・OUT 0x02・IN 0x82 (HID の 0x81/0x01 と衝突なし)。 */
+#define COMPOSITE_CONFIG_TOTAL_LEN \
+    (TUD_CONFIG_DESC_LEN + TUD_HID_INOUT_DESC_LEN + TUD_CDC_DESC_LEN)
+
+static uint8_t const desc_configuration_composite[] = {
+    TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL_COMPOSITE, 0,
+                          COMPOSITE_CONFIG_TOTAL_LEN,
+                          TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 500),
+    TUD_HID_INOUT_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_NONE,
+                             sizeof(desc_hid_report), 0x01, 0x80 | 0x01,
+                             64, 8),
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 0, 0x83, 8, 0x02, 0x82, 64),
+};
+
+/* 自身の構成マクロ合計との一致だけ縛る (SDK 更新に頑健にするため
+ * 純正値のような固定値は置かない)。 */
+_Static_assert(sizeof(desc_configuration_composite) ==
+              COMPOSITE_CONFIG_TOTAL_LEN,
+              "composite config length");
+
+#include "usb_wired.h"
+
 uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
 {
     (void)index;
-    return desc_configuration;
+    if (usb_wired_is_enabled()) {
+        return desc_configuration;
+    }
+    return desc_configuration_composite;
 }
 
 /* 文字列 (純正の写し。シリアルは純正固定値)。 */
