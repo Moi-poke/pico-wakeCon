@@ -230,7 +230,9 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
         pend_resp_id = USB_WIRED_REPORT_ID_REPLY;
         pend_resp_valid = true;
     } else if (req[0] == 0x01u) {
-        /* 0x01 サブコマンド (2wiCC 通り)。0x10 は振動のみで無応答。 */
+        /* 0x01 サブコマンド。
+         * 注意: report ID 0x10 (振動のみ・無応答) と sub 0x10 (SPI 読出・
+         * 要応答) は別物。混同して落とすと Switch が再送を繰り返す。 */
         usb_sub_ctx_t ctx;
         if (req_len < 11) {
             return;
@@ -253,7 +255,8 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
             wired_stats.first8[wired_stats.first8_n++] = sub;
         }
         if (sub == 0x10u) {
-            /* 読出番地を残す (応答内容の当否判定用)。 */
+            /* 読出番地を残す (応答内容の当否判定用)。
+             * 応答自体は下の共用経路で返す (早期 return しない)。 */
             if (req_len >= 16) {
                 wired_stats.spi_a =
                     (uint16_t)((uint16_t)req[11] |
@@ -261,7 +264,6 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
                 wired_stats.spi_n = req[15];
                 wired_stats.spi_c++;
             }
-            return;
         }
         /* 0x03 mode 0x30 も full 開始合図にする (BT の full 化と同義)。
          * 80 04 が来ないホストへの備え。W 0 中は立てない。 */
