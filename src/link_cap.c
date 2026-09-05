@@ -34,6 +34,8 @@ bool link_cap_start(uint8_t seconds)
     gap_set_scan_duplicate_filter(false);
     gap_start_scan();
     probe_scanning = true;
+    /* 電波を確保する (有線中の電源断から復帰する場合あり)。 */
+    link_radio_update();
     cap_deadline_ms =
         to_ms_since_boot(get_absolute_time()) + (uint32_t)seconds * 1000u;
     snprintf(text, sizeof(text), "CAP-START %us. press HOME on Joy-Con",
@@ -125,5 +127,7 @@ void link_cap_tick(uint32_t now_ms)
                      (unsigned)probe_cap_table.used);
         }
         probe_line(text);
+        /* 有線中なら電波を止め直す (取込で起こしていた場合)。 */
+        link_radio_update();
     }
 }

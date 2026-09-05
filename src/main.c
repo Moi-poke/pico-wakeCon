@@ -375,6 +375,19 @@ int main(void)
     btstack_run_loop_add_timer(&usb_poll);
 
     probe_line("ready. C capture / B wake / S input / ? status");
+    /* 起動直後は USB を密にポンプする。ホストが列挙するまで (最大10秒)。
+     * 厳格なホストの SETUP を落とさないため。列挙済みなら即進むので
+     * 無線運用の起動は遅くならない。以後は 1ms タイマに任せる。 */
+    {
+        uint32_t pump_until =
+            to_ms_since_boot(get_absolute_time()) + 10000u;
+        while (!usb_wired_is_configured() &&
+               (int32_t)(to_ms_since_boot(get_absolute_time()) -
+                         pump_until) < 0) {
+            usb_wired_pump();
+            sleep_us(100);
+        }
+    }
     btstack_run_loop_execute();
 
     while (1) {

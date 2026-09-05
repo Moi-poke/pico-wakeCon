@@ -47,8 +47,11 @@ bool link_beacon_start(void)
         probe_line("B ERR CONNECTED");
         return false;
     }
+    /* 電波を確保する (有線中の電源断から復帰する場合あり)。
+     * 続く Classic 黙らせは再生専用のため update より後に置く。 */
+    link_radio_update();
     /* Classic を黙らせる。inquiry/page 応答と再接続が LE 広告の
-     * 電波時間を奪うため。終了後に戻す。 */
+     * 電波時間を奪うため。終了後は link_radio_update が戻す。 */
     gap_discoverable_control(0);
     gap_connectable_control(0);
     bdaddr_spoof(probe_cap_saved.spoof);
@@ -65,7 +68,8 @@ bool link_beacon_start(void)
     return true;
 }
 
-/* 再生期限。アドレスと Classic を戻し、LE 接続が残れば切る。 */
+/* 再生期限。アドレスを戻し、LE 接続が残れば切る。
+ * Classic 待ち受け・電波は link_radio_update が決める (有線中は戻さない)。 */
 void link_beacon_tick(uint32_t now_ms)
 {
     if (probe_beacon &&
@@ -73,13 +77,13 @@ void link_beacon_tick(uint32_t now_ms)
         probe_beacon = false;
         gap_advertisements_enable(0);
         bdaddr_spoof(probe_addr);
-        gap_discoverable_control(1);
-        gap_connectable_control(1);
         if (le_handle != HCI_CON_HANDLE_INVALID) {
             gap_disconnect(le_handle);
             le_handle = HCI_CON_HANDLE_INVALID;
         }
         probe_line("BCN-DONE. address restored");
+        /* 有線中なら待ち受けを戻さず電波も止める。無線中は従来通り戻す。 */
+        link_radio_update();
     }
 }
 

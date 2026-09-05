@@ -6,6 +6,7 @@
 
 #include <string.h>
 
+#include "pico/time.h"
 #include "tusb.h"
 
 #include "usb_wired.h"
@@ -114,6 +115,13 @@ static void build_input_report(uint8_t out[USB_WIRED_INPUT_LEN])
 void usb_wired_pump(void)
 {
     tud_task();
+}
+
+void usb_wired_reconnect(void)
+{
+    tud_disconnect();
+    sleep_ms(50);
+    tud_connect();
 }
 
 void usb_wired_task(uint32_t now_ms)

@@ -92,22 +92,42 @@ void link_mark_connected(void)
     outgoing_at_ms = 0u;
 }
 
+/* 有線モード保持。BT 電源の二重切替を避けるための現在値。 */
+static bool link_wired;
+static bool bt_powered = true; /* 起動時は main が HCI_POWER_ON する */
+
+void link_radio_update(void)
+{
+    /* 有線中は電波を止める。無線チップが動いていると Switch 側が
+     * USB を列挙しない (実測)。取込・再生中は電波が要るので戻す。 */
+    bool quiet = link_wired && !probe_scanning && !probe_beacon;
+    bool want_on = !quiet;
+    if (want_on != bt_powered) {
+        hci_power_control(want_on ? HCI_POWER_ON : HCI_POWER_OFF);
+        bt_powered = want_on;
+    }
+    gap_connectable_control(quiet ? 0u : 1u);
+    gap_discoverable_control(quiet ? 0u : 1u);
+    /* 電波を止めたら USB を挿し直したのと同じ状態に戻す。
+     * 未列挙のときだけ蹴る (健全なセッションは churn しない)。 */
+    if (quiet && !usb_wired_is_configured()) {
+        usb_wired_reconnect();
+    }
+}
+
 void link_apply_wired_mode(bool wired)
 {
+    link_wired = wired;
     if (wired) {
         /* 接続中なら先に切る。切断完了は HID_SUBEVENT_CONNECTION_CLOSED 経由で
          * handle_hid_meta が始末する (cid=0・link_note_disconnected)。 */
         if (probe_hid_cid != 0u) {
             hid_device_disconnect(probe_hid_cid);
         }
-        /* Switch からの呼び直し (着信 page) を受けないように待ち受けを止める。
-         * 発信抑止だけでは再接続を防げないため。LE 広告・スキャンには触らない。 */
-        gap_connectable_control(0);
-        gap_discoverable_control(0);
-    } else {
-        gap_connectable_control(1);
-        gap_discoverable_control(1);
     }
+    /* Switch からの呼び直し (着信 page) 対策と電波停止は update に集約。
+     * LE 広告・スキャンの要否は update が見る。 */
+    link_radio_update();
 }
 
 int link_key_count(void)
