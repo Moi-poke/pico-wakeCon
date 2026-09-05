@@ -15,6 +15,7 @@
 #include "store.h"
 #include "ui.h"
 #include "switch_hid.h"
+#include "usb_wired.h"
 
 #define UART_ID     uart0
 #define BAUD_RATE   115200
@@ -43,6 +44,8 @@ static btstack_timer_source_t reconnect_timer;
 static void uart_poll_handler(btstack_timer_source_t *ts)
 {
     probe_uart_task();
+    /* 有線 USB のポンプ (10ms)。新規タイマを足さず既存周期に相乗りする。 */
+    usb_wired_task(to_ms_since_boot(get_absolute_time()));
     btstack_run_loop_set_timer(ts, UART_POLL_MS);
     btstack_run_loop_add_timer(ts);
 }
@@ -346,6 +349,9 @@ int main(void)
 
     btstack_run_loop_set_timer_handler(&reconnect_timer,
                                        &link_reconnect_handler);
+
+    /* 有線 USB (TinyUSB)。既存の初期化順は触らない。末尾追加のみ。 */
+    usb_wired_init();
 
     probe_line("ready. C capture / B wake / S input / ? status");
     btstack_run_loop_execute();

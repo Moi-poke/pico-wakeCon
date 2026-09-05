@@ -41,6 +41,7 @@ add_executable(pico-wakecon
     src/util.c
     src/usb_hid.c
     src/usb_descriptors.c
+    src/usb_wired.c
 )
 
 pico_set_program_name(pico-wakecon "pico-wakecon")

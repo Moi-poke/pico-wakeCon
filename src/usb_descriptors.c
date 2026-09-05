@@ -209,8 +209,8 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
     return wired_desc_str;
 }
 
-/* GET_REPORT 要求への応答は Task 4 (usb_wired) が持つ。
- * リンクを通すための最小定義。でたらめ値は返さない。 */
+/* GET_REPORT 要求が来た実測はないため 0 (STALL) のまま。
+ * でたらめ値は返さない。T1ハードで観測されたら usb_wired 側で持つ。 */
 uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id,
                                hid_report_type_t report_type, uint8_t *buffer,
                                uint16_t reqlen)
@@ -223,15 +223,5 @@ uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id,
     return 0;
 }
 
-/* OUT EP (80 xx ハンドシェイク) の受口は Task 4 (usb_wired) が持つ。
- * リンクを通すための最小定義。ここでは捨てる。 */
-void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
-                           hid_report_type_t report_type, uint8_t const *buffer,
-                           uint16_t bufsize)
-{
-    (void)instance;
-    (void)report_id;
-    (void)report_type;
-    (void)buffer;
-    (void)bufsize;
-}
+/* OUT EP (80 xx ハンドシェイク) の受口は src/usb_wired.c に MOVE した。
+ * 二重定義のリンクエラーを避けるためここには置かない。 */
