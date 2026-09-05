@@ -121,9 +121,7 @@ int usb_build_21_reply(const uint8_t *req, int req_len, uint8_t *out,
             }
             addr = (uint16_t)req[11] | ((uint16_t)req[12] << 8);
             want = req[15];
-            hit = spi_find(addr);
-            if (hit == NULL || want > hit->size) {
-                /* 未知・不足は答えない。でたらめ校正値は渡さない。 */
+            if (want == 0u || want > 44u) {
                 return 0;
             }
             out[13] = 0x90u;
@@ -133,7 +131,17 @@ int usb_build_21_reply(const uint8_t *req, int req_len, uint8_t *out,
             out[17] = 0x00u;
             out[18] = 0x00u;
             out[19] = want;
-            memcpy(&out[20], hit->data, want);
+            hit = spi_find(addr);
+            if (hit != NULL && want <= hit->size) {
+                memcpy(&out[20], hit->data, want);
+            } else if (addr >= 0x6000u && addr < 0x6100u &&
+                       (uint32_t)addr + want <= 0x6100u) {
+                /* 表にない 0x60xx は 0xFF 埋めで答える (2wiCC 通り)。
+                 * 無応答にするとホストが止まる。範囲外は答えない。 */
+                memset(&out[20], 0xFF, want);
+            } else {
+                return 0;
+            }
             return 64;
         }
         case 0x30u:

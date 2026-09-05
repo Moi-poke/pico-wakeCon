@@ -135,7 +135,25 @@ int main(void)
         /* 未知サブコマンドは 80 + sub の既定応答。 */
         n = usb_build_21_reply(q33, 11, out, sizeof(out), &ctx);
         CHECK(n == 64 && out[13] == 0x80u && out[14] == 0x33u);
-        /* 不正は 0。未知 SPI・短い要求・短い out・NULL・非 0x01。 */
+        /* 表にない 0x60xx (例: 機器種別 0x6012) は 0xFF 埋めで答える。 */
+        {
+            uint8_t q12[16] = {0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10,
+                               0x12, 0x60, 0, 0, 4};
+            n = usb_build_21_reply(q12, 16, out, sizeof(out), &ctx);
+            CHECK(n == 64 && out[13] == 0x90u && out[14] == 0x10u);
+            CHECK(out[15] == 0x12u && out[16] == 0x60u && out[19] == 4u);
+            CHECK(out[20] == 0xFFu && out[21] == 0xFFu);
+            CHECK(out[22] == 0xFFu && out[23] == 0xFFu);
+        }
+        /* 0x6020 は妥当な校正値 (全 0 ではない)。 */
+        {
+            uint8_t q20[16] = {0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10,
+                               0x20, 0x60, 0, 0, 24};
+            n = usb_build_21_reply(q20, 16, out, sizeof(out), &ctx);
+            CHECK(n == 64 && out[19] == 24u);
+            CHECK(out[25] == 0x01u && out[27] == 0x40u);
+        }
+        /* 不正は 0。範囲外 SPI・短い要求・短い out・NULL・非 0x01。 */
         CHECK(usb_build_21_reply(q10unk, 16, out, sizeof(out), &ctx) == 0);
         CHECK(usb_build_21_reply(q10, 15, out, sizeof(out), &ctx) == 0);
         CHECK(usb_build_21_reply(q02, 10, out, sizeof(out), &ctx) == 0);

@@ -269,8 +269,13 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
         }
         pend_resp_id = 0x21u;
         pend_resp_valid = true;
+    } else if (req[0] != 0x10u) {
+        /* 0x80/0x01/0x10 以外は応答なし。未知 ID は計数だけ残す
+         * (UART 連打を避けるため。BT 側の OUT id= 行に相当)。 */
+        wired_stats.unk_id = req[0];
+        wired_stats.unk_len = (uint8_t)(req_len > 255 ? 255 : req_len);
+        wired_stats.unk_n++;
     }
-    /* 0x10 等のその他は応答なし。 */
 }
 
 /* 装着で計数。tud_mounted() が立つ直前の bus reset/configure 由来。 */

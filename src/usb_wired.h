@@ -48,6 +48,10 @@ typedef struct {
     uint8_t hist[4];
     uint8_t hist01[4];
     uint32_t tx21;
+    /* 未知レポート ID の最終値・長さ・回数。 */
+    uint8_t unk_id;
+    uint8_t unk_len;
+    uint32_t unk_n;
 } usb_wired_stats_t;
 void usb_wired_get_stats(usb_wired_stats_t *st);
 
