@@ -1,7 +1,7 @@
 # pico-wakecon
 
 Raspberry Pi Pico 2 W 1台で動作する、Nintendo Switch 2 のウェイク装置兼
-Nintendo Switch 1 用 Pro Controller エミュレータです。
+Pro Controller エミュレータ（無線・有線）です。
 
 動作の流れは次のとおりです。
 
@@ -9,6 +9,9 @@ Nintendo Switch 1 用 Pro Controller エミュレータです。
 2. `B` コマンドで送信元 MAC アドレスを偽装して再生し、スリープ中の
    Switch 2 を起動する
 3. Switch 1 には Classic Bluetooth で Pro Controller として接続する
+4. `W 1` で有線モードに切り替え、USB ケーブルでドックに直結して
+   Pro Controller として使う（Switch 2 のドックで動作確認済み）。
+   `W 0` で無線に戻る
 
 ## 必要なもの
 
@@ -16,12 +19,13 @@ Nintendo Switch 1 用 Pro Controller エミュレータです。
 - Nintendo Switch 2（スリープ復帰の対象）
 - Switch 2 にペアリング済みのコントローラ（Joy-Con 2 など。取込元）
 - Nintendo Switch 1（プロコン操作の対象）
-- PC との接続：USB-シリアル変換アダプタ（GP0/GP1、115200bps）または USB CDC
+- PC との接続：USB-シリアル変換アダプタ（GP0/GP1、115200bps。必須）
+- 有線接続用：Switch ドック、データ通信対応の USB ケーブル
 
 ## 初回セットアップ
 
-1. Pico の GP0（TX）/GP1（RX）/GND を USB-シリアル変換アダプタに接続します
-   （USB CDC を使う場合は不要です）。シリアル端末を 115200bps で開きます
+1. Pico の GP0（TX）/GP1（RX）/GND を USB-シリアル変換アダプタに接続します。
+   シリアル端末を 115200bps で開きます（コマンド入出力は UART のみです）
 2. BOOTSEL ボタンを押しながら Pico を PC に接続し、出てきたドライブに
    `build/pico-wakecon.uf2` を書き込みます（ビルド手順は後述）
 3. 起動すると次の行が出ます。出なければ配線・端末設定を見直してください
@@ -97,7 +101,30 @@ O 313131 0f0f0f 0ab9e6 ff3c28   ← 本体・ボタン・左・右の順
 
 成功すると `color ...` 行が返り、Flash に保存されます。Switch 側の表示に
 反映されない場合は、Switch のコントローラー登録を解除して繋ぎ直して
-ください。
+ください。有線モード中は成功時に自動で再列挙し、Switch に読み直させます。
+それでも反映されなければ USB ケーブルを挿し直してください。
+
+### 4. 有線接続で使う
+
+Switch の「設定」で「Proコントローラーの有線通信」を ON にしてから、
+次の手順で接続します（Switch 2 のドックで動作確認済みです）。
+
+```
+W 1
+```
+
+Pico の USB ポートをドックの USB ポートに接続します。`?` の `usb ...` 行が
+`cfg=1 hs=1` になれば接続完了です（読み方は後述）。あとは `S`・`N` で
+無線と同じように操作できます。
+
+補足事項：
+
+- `W`（引数なし）で現在のモードを表示します。`W 0` で無線に、`W 1` で
+  有線に戻ります。モードは Flash に保存され、起動時に復元されます
+- 有線モード中は Classic Bluetooth の電波を止めます。`C`・`B` を使うときは
+  自動で電波を起こし、終われば止め直します
+- `W 0` に戻すと数秒で無線が再接続します。繋がらない場合は `K` と Switch 側の
+  登録解除から繋ぎ直してください
 
 ## コマンド一覧
 
@@ -115,6 +142,7 @@ O 313131 0f0f0f 0ab9e6 ff3c28   ← 本体・ボタン・左・右の順
 | `M` | 監視表示の on/off（既定 off） |
 | `K` | Classic リンク鍵の全削除 |
 | `P` | PONG（疎通確認） |
+| `W` / `W 0` / `W 1` | 有線・無線の表示・切替（Flash 保存、起動時復元） |
 
 ### エラー行の意味
 
@@ -131,12 +159,13 @@ O 313131 0f0f0f 0ab9e6 ff3c28   ← 本体・ボタン・左・右の順
 
 ### `?` 状態表示の読み方
 
-`?` を入力すると、次の 3 種類の行が返ります。
+`?` を入力すると、次の 4 種類の行が返ります。
 
 ```
 st host=1 cid=1537 full=1 keys=1 saved=1 scan=0 bcn=0
 color body=313131 btn=0f0f0f left=0ab9e6 right=ff3c28
 saved spoof=aabbccddeeff sw=112233445566
+usb en=1 cfg=1 hs=1 mnt=1 umnt=0 rx80=4 last=04 tx81=4 tx21=8 in30=391 sof=0 sus=0 rsm=0 ep=31 ct=0 h=05010204 h1=10101010 u=00/2 n=3 f1=0302081001000000 sp=6020/24*11 sh=0 sd=01
 ```
 
 * `st` 行：`host`＝相手番地の記憶有無、`cid`＝HID 接続 ID（0 は未接続）、
@@ -145,6 +174,16 @@ saved spoof=aabbccddeeff sw=112233445566
 * `color` 行：現在の本体色（`O` の応答と同じ書式）
 * `saved` 行：再生に使う偽装元 MAC（`spoof`）と Switch 側 MAC（`sw`）。
   未保存のときは出ません
+* `usb` 行：有線接続の状態と診断計数。`en`＝有線モード（`W 1` で 1）、
+  `cfg`＝USB 列挙済み、`hs`＝ハンドシェイク完了。接続完了の目安は
+  `cfg=1 hs=1` です。以降は診断用で、普段は見なくて構いません：
+  `mnt`/`umnt`＝マウント回数、`rx80`/`last`＝`80 xx` 受信数・最終種別、
+  `tx81`/`tx21`＝応答送出数、`in30`＝入力送出数、`ep`/`ct`＝受信経路別総数、
+  `h`＝直近の `80` 系 4 件、`h1`＝直近の `01` 系 4 件、
+  `u`＝未知 ID（最終値・長さ・回数）、`f1`＝`01` 系の到達順 8 件、
+  `sp`＝直近 SPI 読出（番地・長さ・回数）、`sh`＝短い受信の回数、
+  `sd`＝直近 `01` のデータバイト。`sof`/`sus`/`rsm` は環境により
+  進まないことがある参考値です
 
 ## 注意事項
 
@@ -177,6 +216,21 @@ saved spoof=aabbccddeeff sw=112233445566
 * **切分け用表示**: `D` は HCI 生ログの on/off、`M` は 1 秒ごとの
   監視表示（`mon ...` 行）の on/off です。どちらも既定 off で、問題が
   再現したら on にしてログを取ってください
+* **有線で認識されない**（`usb` 行の `cfg=0` のまま）: ケーブルがデータ通信
+  対応か、ドックの USB ポート・電源、Switch 側の「有線通信」設定、`W 1`
+  での `en=1` を順に確認してください
+* **有線のハンドシェイクが進まない**（`cfg=1` のまま `hs=0`）: USB ケーブルを
+  挿し直してください。直らなければ `usb ...` 行全体を控えてください
+* **一覧に表示されない**: 上記を確認し、解消しなければ Switch を再起動して
+  から挿し直してください（中途半端な登録情報が残ることがあります）
+* **有線で 2162-0002 が出た**: 既知の問題として報告されています。まず Switch
+  を再起動し、Pico を挿し直してください。繰り返す場合は発生時の `usb ...` 行
+  を控えてください
+* **`W` 切替後に無線が繋がらない**: `W 0` のあと数秒待ってください（自動で
+  再接続します）。駄目な場合は `K` と Switch 側の登録解除から繋ぎ直して
+  ください
+* **有線で色が反映されない**: `O` 成功で自動再列挙します。反映されなければ
+  USB ケーブルを挿し直してください
 
 ## ビルド
 
@@ -199,17 +253,21 @@ $ninja = Join-Path $env:USERPROFILE '.pico-sdk/ninja/v1.13.2/ninja.exe'
 | `cap.c` | wake ビーコン解釈・表・保存形式 |
 | `hid.c` | 入力状態・サブコマンド応答・送信 |
 | `spi.c` | Pro Controller SPI フラッシュ値 |
-| `store.c` | Flash 保存（相手番地・色・取込） |
+| `store.c` | Flash 保存（相手番地・色・取込・W モード） |
 | `link.c` | 取込・再生期限の振分け（薄層） |
 | `link_conn.c` | 自アドレス・再接続・リンク鍵数 |
 | `link_cap.c` | wake ビーコン取込・表・保存判定 |
 | `link_beacon.c` | wake 再生・MAC 偽装・LE 追跡 |
-| `ui.c` | UART/USB 入出力・コマンド・状態表示 |
-| `util.c` | 純粋ヘルパー（16進・色表示等） |
+| `ui.c` | UART 入出力・コマンド・状態表示 |
+| `util.c` | 純粋ヘルパー（16進・色表示・スティック配置等） |
+| `usb_hid.c` | 有線応答組立（Pico・BTstack 非依存、ホストテスト可） |
+| `usb_wired.c` | 有線状態機・入出力・診断計数（TinyUSB） |
+| `usb_descriptors.c` | USB 記述子（VID/PID/文字列/HID、純正値の写し） |
+| `tusb_config.h` | TinyUSB 設定（HID のみ） |
 | `switch_hid.h` | HID 記述子・VID/PID/COD |
 | `btstack_config.h` | BTstack 設定 |
 
-ホスト単体テストは `tests/host`（`test_util`・`test_cap`、CTest）。
+ホスト単体テストは `tests/host`（`test_util`・`test_cap`・`test_usb`、CTest）。
 
 ## 謝辞・参考
 
@@ -219,6 +277,7 @@ $ninja = Join-Path $env:USERPROFILE '.pico-sdk/ninja/v1.13.2/ninja.exe'
 - [mizuyoukanao/btstack](https://github.com/mizuyoukanao/btstack) — BTstack 版 Pro Controller 2 実装
 - [dekuNukem/Nintendo_Switch_Reverse_Engineering](https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering) — Switch 1 プロコン仕様
 - [DavidPagels/retro-pico-switch](https://github.com/DavidPagels/retro-pico-switch) (MIT) — HID 記述子等の参照元
+- [knflrpn/2wiCC](https://github.com/knflrpn/2wiCC) (MIT) — 有線 Pro Controller 実装（USB 記述子・ハンドシェイク応答の参考）
 
 ## ライセンス
 
