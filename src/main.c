@@ -285,6 +285,11 @@ int main(void)
     probe_line("");
     probe_line("=== wakecon ===");
 
+    /* 有線 USB を BT より先に初期化する。列挙前の消費電流制限
+     * (未設定時 100mA) にかからないよう、CYW43/BT が起動する前に
+     * pull-up を上げて列挙させる。BT 内部の初期化順は変えない。 */
+    usb_wired_init();
+
     if (cyw43_arch_init() != 0) {
         probe_line("NG: cyw43_arch_init");
         while (1) {
@@ -349,9 +354,6 @@ int main(void)
 
     btstack_run_loop_set_timer_handler(&reconnect_timer,
                                        &link_reconnect_handler);
-
-    /* 有線 USB (TinyUSB)。既存の初期化順は触らない。末尾追加のみ。 */
-    usb_wired_init();
 
     probe_line("ready. C capture / B wake / S input / ? status");
     btstack_run_loop_execute();
