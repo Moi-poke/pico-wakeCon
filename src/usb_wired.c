@@ -111,6 +111,11 @@ static void build_input_report(uint8_t out[USB_WIRED_INPUT_LEN])
     out[11] = 0x08u; /* 実測未確認: ハット無操作の仮置き */
 }
 
+void usb_wired_pump(void)
+{
+    tud_task();
+}
+
 void usb_wired_task(uint32_t now_ms)
 {
     uint8_t report[USB_WIRED_INPUT_LEN];

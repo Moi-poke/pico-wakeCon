@@ -24,6 +24,7 @@
 
 #define HEARTBEAT_MS 1000
 #define UART_POLL_MS 10
+#define USB_POLL_MS 1
 
 /* HCI event code names (BTstack/BT spec values, renamed for readability). */
 #define HCI_EV_SSP_BEGIN 0x31u
@@ -40,6 +41,7 @@ static btstack_timer_source_t heartbeat;
 static btstack_timer_source_t uart_poll;
 static btstack_timer_source_t empty_timer;
 static btstack_timer_source_t reconnect_timer;
+static btstack_timer_source_t usb_poll;
 
 static void uart_poll_handler(btstack_timer_source_t *ts)
 {
@@ -47,6 +49,15 @@ static void uart_poll_handler(btstack_timer_source_t *ts)
     /* 有線 USB のポンプ (10ms)。新規タイマを足さず既存周期に相乗りする。 */
     usb_wired_task(to_ms_since_boot(get_absolute_time()));
     btstack_run_loop_set_timer(ts, UART_POLL_MS);
+    btstack_run_loop_add_timer(ts);
+}
+
+/* 有線 USB の定常ポンプ (1ms)。2wiCC のタイトループ相当。
+ * 10ms 周期の uart_poll 相乗りでは厳格なホストの列挙に応答しきれない。 */
+static void usb_poll_handler(btstack_timer_source_t *ts)
+{
+    usb_wired_pump();
+    btstack_run_loop_set_timer(ts, USB_POLL_MS);
     btstack_run_loop_add_timer(ts);
 }
 
@@ -296,6 +307,8 @@ int main(void)
             tight_loop_contents();
         }
     }
+    /* 起動中のつなぎポンプ。run loop 開始前の約2〜3秒に SETUP を落とさない。 */
+    usb_wired_pump();
     link_init();
 
     gap_discoverable_control(1);
@@ -308,6 +321,7 @@ int main(void)
     gap_ssp_set_io_capability(SSP_IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
     gap_ssp_set_auto_accept(true);
 
+    usb_wired_pump();
     l2cap_init();
     sdp_init();
 
@@ -338,6 +352,7 @@ int main(void)
     hci_power_control(HCI_POWER_ON);
     /* transport が SDK 既定 MAC を入れるため後で上書きする。 */
     hci_set_bd_addr(probe_addr);
+    usb_wired_pump();
 
     btstack_run_loop_set_timer_handler(&heartbeat,
                                        &probe_heartbeat_handler);
@@ -354,6 +369,10 @@ int main(void)
 
     btstack_run_loop_set_timer_handler(&reconnect_timer,
                                        &link_reconnect_handler);
+
+    btstack_run_loop_set_timer_handler(&usb_poll, &usb_poll_handler);
+    btstack_run_loop_set_timer(&usb_poll, USB_POLL_MS);
+    btstack_run_loop_add_timer(&usb_poll);
 
     probe_line("ready. C capture / B wake / S input / ? status");
     btstack_run_loop_execute();

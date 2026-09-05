@@ -13,6 +13,9 @@ extern "C" {
 
 void usb_wired_init(void);
 void usb_wired_task(uint32_t now_ms);
+/* TinyUSB のポンプ単体。BTstack のタイマ外 (起動中のつなぎ等) から呼ぶ。
+ * tusb.h と btstack.h の衝突を main 側に持ち込まないための窓口。 */
+void usb_wired_pump(void);
 void usb_wired_set_enabled(bool en);
 bool usb_wired_is_enabled(void);
 bool usb_wired_is_configured(void);
