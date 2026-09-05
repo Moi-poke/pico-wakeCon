@@ -6,6 +6,7 @@
 #include "link.h"
 #include "switch_hid.h"
 #include "ui.h"
+#include "usb_wired.h"
 
 bd_addr_t probe_addr;
 
@@ -37,6 +38,13 @@ static uint32_t outgoing_at_ms;
 
 void link_reconnect_handler(btstack_timer_source_t *ts)
 {
+    /* 有線モード中は Classic に出ていかない。二重認識防止。
+     * タイマだけ繋ぎ直して周期を保つ (W 0 で通常輪に戻る)。 */
+    if (usb_wired_is_enabled()) {
+        btstack_run_loop_set_timer(ts, RECONNECT_RETRY_MS);
+        btstack_run_loop_add_timer(ts);
+        return;
+    }
     if (probe_outgoing_tried && probe_hid_cid == 0u && outgoing_at_ms != 0u) {
         uint32_t waited =
             to_ms_since_boot(get_absolute_time()) - outgoing_at_ms;

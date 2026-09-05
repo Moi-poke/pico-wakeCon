@@ -1,4 +1,4 @@
-/* S:姿勢 N:解放 O:色 C:取込 L:一覧 B:再生 ?:状態 D/M:表示 K:鍵 P:疎通。
+/* S:姿勢 N:解放 O:色 C:取込 L:一覧 B:再生 ?:状態 D/M:表示 K:鍵 P:疎通 W:有線/無線。
  * 1文字命令の誤認を避けるため、S 行の途中で区切る受付は持たない。
  * D（HCI 生ログ）と M（監視表示）は既定で off。 */
 
@@ -15,6 +15,7 @@
 #include "spi.h"
 #include "store.h"
 #include "ui.h"
+#include "usb_wired.h"
 #include "util.h"
 
 #define UART_ID uart0
@@ -194,6 +195,48 @@ static void cmd_p(void)
     probe_line("PONG");
 }
 
+static void report_usb_line(void)
+{
+    /* 有線/USB の状態行。st 行の書式は触らず別行に分離する。 */
+    char m[64];
+    snprintf(m, sizeof(m), "usb en=%u cfg=%u hs=%u",
+             usb_wired_is_enabled() ? 1u : 0u,
+             usb_wired_is_configured() ? 1u : 0u,
+             usb_wired_handshake_done() ? 1u : 0u);
+    probe_line(m);
+}
+
+static void cmd_w(void)
+{
+    /* W[ 0|1]: 0=無線/BT、1=有線/USB。引数なしは現在値表示。
+     * 数字の解釈は cmd_c のパターン踏襲。不正・範囲外は usage 行のみで状態不変。 */
+    unsigned long v = 0u;
+    int digits = 0;
+    int p;
+    if (line_len <= 1) {
+        report_usb_line();
+        return;
+    }
+    p = 1;
+    while (p < line_len && line_buf[p] == ' ') {
+        p++;
+    }
+    while (p < line_len && line_buf[p] >= '0' &&
+           line_buf[p] <= '9') {
+        v = v * 10u + (unsigned long)(line_buf[p] - '0');
+        p++;
+        digits++;
+    }
+    if (digits == 0 || p != line_len || v > 1u) {
+        probe_line("usage: W [0|1]");
+        return;
+    }
+    /* Classic 接続中でも切断はしない (Touch Nothing Else)。
+     * 再接続抑止のみ link 側で行う。 */
+    usb_wired_set_enabled(v == 1u);
+    report_usb_line();
+}
+
 typedef void (*ui_cmd_fn)(void);
 typedef struct {
     char c;
@@ -214,6 +257,7 @@ static const ui_cmd_t UI_CMDS[] = {
     { 'K', cmd_k },
     { 'P', cmd_p },
     { 'p', cmd_p },
+    { 'W', cmd_w },
 };
 
 static bool ui_cmd_is_known(char c)
@@ -302,6 +346,7 @@ void probe_show_status(void)
                  probe_cap_saved.switch_mac[5]);
         probe_line(m);
     }
+    report_usb_line();
 }
 
 void probe_heartbeat_handler(btstack_timer_source_t *ts)

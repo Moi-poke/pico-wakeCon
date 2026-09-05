@@ -26,7 +26,8 @@ extern uint8_t probe_addr[6]; /* link.h の bd_addr_t (uint8_t[6]) と対応 */
 /* 実測未確認: 81 応答の IN report ID は 0x81 仮置き (OUT 0x80 に対応)。T1ハードで確定。 */
 #define USB_WIRED_REPORT_ID_REPLY 0x81u
 /* 実測未確認: 送信周期は暫定。BT 側 120Hz は持ち込まない。
- * 記述子 bInterval=8 に合わせた仮置き。T1 実測で確定。 */
+ * 記述子 bInterval=8 に合わせた仮置き。T1 実測で確定。
+ * 呼出しは uart_poll (10ms) のため実効は 10ms に量子化される。 */
 #define USB_WIRED_PROVISIONAL_INTERVAL_MS 8u
 /* 実測未確認: 81 01 応答の機種別 type 値は仮置き。T1ハードで確定。 */
 #define USB_WIRED_PROVISIONAL_DEV_TYPE 0x03u
