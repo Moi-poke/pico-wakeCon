@@ -81,7 +81,9 @@ static void build_input_report(uint8_t out[USB_WIRED_INPUT_LEN])
     out[0] = USB_WIRED_REPORT_ID_INPUT;
     out[1] = probe_btn[0];
     out[2] = probe_btn[1];
-    /* 8bit (0x80 中立) → 16bit LE 仮置き。Y 反転の有無は実測未確認のため素通し。 */
+    /* TODO(T1): btn[2] の割付け未確認のため送らない。ハットは中立固定。T1ハードで確定。 */
+    /* 8bit (0x80 中立) → 16bit LE 仮置き ((v<<8)|v で 0x80→0x8080。0x8000 中心・Y 反転は未確定)。
+     * BT 側 probe_pack_stick との対応も T1ハードで確定。Y は実測未確認のため素通し。 */
     v = (uint16_t)(((uint16_t)probe_lx << 8) | probe_lx);
     out[3] = (uint8_t)(v & 0xFFu);
     out[4] = (uint8_t)(v >> 8);
@@ -156,9 +158,10 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
         return;
     }
     sub = req[1];
-    if (sub == 0x04u) {
+    /* W 0 中のホスト雑音で handshake を立てない (応答自体は返す)。 */
+    if (wired_enabled && sub == 0x04u) {
         handshake_done = true;
-    } else if (sub == 0x05u) {
+    } else if (wired_enabled && sub == 0x05u) {
         handshake_done = false;
     }
     /* 81 01 応答の MAC は設計メモの逆順格納に従う。
@@ -174,6 +177,7 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
     if (!tud_hid_ready()) {
         return;
     }
+    /* 実測未確認: 短い 81 応答 (2B/10B) をそのまま送る仮置き。64B パディング有無は T1ハードで確定。 */
     tud_hid_report(USB_WIRED_REPORT_ID_REPLY, &reply[1], (uint16_t)(n - 1));
 }
 
