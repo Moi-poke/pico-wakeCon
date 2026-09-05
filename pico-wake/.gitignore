@@ -1,0 +1,8 @@
+build
+build-verify/
+*.elf
+*.uf2
+*.hex
+*.bin
+.cache/
+!.vscode/*
