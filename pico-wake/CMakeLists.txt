@@ -41,6 +41,11 @@ add_executable(pico-wake
     switch2_wake_capture.c
     switch2_wake_util.c
     app_config.c
+    app_common.c
+    app_ports_adv.c
+    app_ports_store.c
+    app_ports_cmd.c
+    app_ports_att.c
 )
 
 pico_set_program_name(pico-wake "pico-wake")

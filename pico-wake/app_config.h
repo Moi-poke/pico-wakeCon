@@ -8,6 +8,7 @@ extern "C" {
 #endif
 switch2_wake_config_t app_make_config(void);
 const char *app_meta_state_name(uint8_t state);
+void reset_core(bool verified, uint32_t *actions, wake_result_t *result);
 #define APP_UART_ID uart0
 #define APP_UART_TX_PIN 0
 #define APP_UART_RX_PIN 1
