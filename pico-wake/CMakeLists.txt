@@ -40,6 +40,7 @@ add_executable(pico-wake
     switch2_wake_cmd.c
     switch2_wake_capture.c
     switch2_wake_util.c
+    app_config.c
 )
 
 pico_set_program_name(pico-wake "pico-wake")
